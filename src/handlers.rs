@@ -1,6 +1,6 @@
 use crate::{
     AppState,
-    errors::Result,
+    errors::{AppError, Result},
     models::{
         db::{Profile, ProfileFilters},
         profile::{
@@ -22,9 +22,8 @@ pub async fn create_profile(
     State(state): State<AppState>,
     payload: std::result::Result<Json<CreateProfileRequest>, JsonRejection>,
 ) -> Result<impl IntoResponse> {
-    let Json(payload) =
-        payload.map_err(|e| crate::errors::AppError::InternalServerError(e.to_string()))?;
-    let name = validate_name(&payload.name)?;
+    let Json(payload) = payload.map_err(|e| AppError::BadRequest(e.body_text()))?;
+    let name = validate_name(payload.name)?;
 
     if let Some(existing) = state.db.find_by_name(&name).await? {
         return Ok((
@@ -78,7 +77,7 @@ pub async fn get_profile(
         .db
         .find_by_id(&id)
         .await?
-        .ok_or_else(|| crate::errors::AppError::NotFound("Profile not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("Profile not found".into()))?;
 
     Ok(Json(ProfileResponse {
         status: "success".into(),
@@ -125,9 +124,7 @@ pub async fn delete_profile(
     let deleted = state.db.delete_by_id(&id).await?;
 
     if !deleted {
-        return Err(crate::errors::AppError::NotFound(
-            "Profile not found".into(),
-        ));
+        return Err(AppError::NotFound("Profile not found".into()));
     }
 
     Ok(StatusCode::NO_CONTENT)

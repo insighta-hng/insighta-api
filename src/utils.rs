@@ -1,3 +1,5 @@
+use serde_json::Value;
+
 use crate::{
     client::ReqwestClient,
     errors::{AppError, Result},
@@ -8,19 +10,19 @@ use crate::{
     },
 };
 
-pub fn validate_name(name: &str) -> Result<String> {
-    let name = name.trim();
-    if name.is_empty() {
-        return Err(AppError::BadRequest("Missing or empty name".to_string()));
+pub fn validate_name(name_value: Option<Value>) -> Result<String> {
+    match name_value {
+        None => Err(AppError::BadRequest("Missing or empty name".to_string())),
+        Some(Value::String(name)) => {
+            let trimmed = name.trim().to_string();
+            if trimmed.is_empty() {
+                Err(AppError::BadRequest("Missing or empty name".to_string()))
+            } else {
+                Ok(trimmed)
+            }
+        }
+        Some(_) => Err(AppError::UnprocessableEntity("Invalid type".to_string())),
     }
-
-    if let Ok(value) = serde_json::from_str::<serde_json::Value>(name)
-        && !value.is_string()
-    {
-        return Err(AppError::UnprocessableEntity("Invalid type".to_string()));
-    }
-
-    Ok(name.to_string())
 }
 
 pub async fn fetch_gender_data(

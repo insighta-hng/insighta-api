@@ -1,9 +1,10 @@
 use crate::models::db::Profile;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 #[derive(Debug, Deserialize)]
 pub struct CreateProfileRequest {
-    pub name: String,
+    pub name: Option<Value>,
 }
 
 #[derive(Debug, Serialize)]
