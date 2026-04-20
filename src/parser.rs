@@ -98,14 +98,10 @@ pub fn parse_query(search_query: &str) -> Result<(ProfileFilters, SearchQuery)> 
             }
             "adult" | "adults" | "grownup" | "grownups" | "middle-aged" => {
                 filters.age_group = Some("adult".to_string());
-                filters.min_age = Some(25);
-                filters.max_age = Some(59);
                 is_value_parsed = true;
             }
             "senior" | "seniors" | "old" | "elderly" => {
                 filters.age_group = Some("senior".to_string());
-                filters.min_age = Some(60);
-                filters.max_age = Some(100);
                 is_value_parsed = true;
             }
             _ => {}
