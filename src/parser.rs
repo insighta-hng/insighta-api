@@ -1,14 +1,12 @@
-use capitalize::Capitalize;
-
-use crate::COUNTRIES;
+use crate::COUNTRIES_LOWER;
 use crate::errors::{AppError, Result};
 use crate::models::db::ProfileFilters;
 use crate::models::profile::{SearchQuery, SortBy, SortOrder};
 
 pub fn parse_query(search_query: &str) -> Result<(ProfileFilters, SearchQuery)> {
-    let trimmed_query = search_query.trim();
+    let trimmed_query = search_query.trim().to_lowercase();
     let mut filters = ProfileFilters::default();
-    let mut search_limit = 10;
+    let mut search_limit = 10u8;
     let mut sort_order = SortOrder::default();
     let mut sort_by = SortBy::default();
     let mut is_parsed_country = false;
@@ -16,7 +14,7 @@ pub fn parse_query(search_query: &str) -> Result<(ProfileFilters, SearchQuery)> 
     let mut males = false;
     let mut females = false;
 
-    if let Some(&code) = COUNTRIES.get(&trimmed_query.to_string().capitalize().as_str()) {
+    if let Some(&code) = COUNTRIES_LOWER.get(trimmed_query.as_str()) {
         filters.country_id = Some(code.to_string());
         is_parsed_country = true;
         is_value_parsed = true;
@@ -29,13 +27,18 @@ pub fn parse_query(search_query: &str) -> Result<(ProfileFilters, SearchQuery)> 
 
         match token {
             "in" | "from" => {
-                if idx + 1 < tokens.len() {
-                    let next_token = tokens[idx + 1].capitalize();
-                    if !is_parsed_country && COUNTRIES.contains_key(next_token.as_str()) {
-                        filters.country_id =
-                            Some(COUNTRIES.get(next_token.as_str()).unwrap().to_string());
-                        is_parsed_country = true;
-                        is_value_parsed = true;
+                if idx + 1 < tokens.len() && !is_parsed_country {
+                    let remaining = tokens.len() - idx - 1;
+                    let max_window = remaining.min(7);
+
+                    for window in (1..=max_window).rev() {
+                        let candidate = tokens[idx + 1..=idx + window].join(" ");
+                        if let Some(&code) = COUNTRIES_LOWER.get(candidate.as_str()) {
+                            filters.country_id = Some(code.to_string());
+                            is_parsed_country = true;
+                            is_value_parsed = true;
+                            break;
+                        }
                     }
                 }
             }
@@ -45,25 +48,19 @@ pub fn parse_query(search_query: &str) -> Result<(ProfileFilters, SearchQuery)> 
                 is_value_parsed = true;
             }
             "above" | "over" | "least" => {
-                if idx + 1 < tokens.len()
-                    && let Ok(age) = tokens[idx + 1].parse::<u8>()
-                {
+                if let Some(age) = tokens.get(idx + 1).and_then(|token| parse_number(token)) {
                     filters.min_age = Some(age);
                     is_value_parsed = true;
                 }
             }
             "under" | "below" | "most" => {
-                if idx + 1 < tokens.len()
-                    && let Ok(age) = tokens[idx + 1].parse::<u8>()
-                {
+                if let Some(age) = tokens.get(idx + 1).and_then(|token| parse_number(token)) {
                     filters.max_age = Some(age);
                     is_value_parsed = true;
                 }
             }
             "top" | "first" | "latest" => {
-                if idx + 1 < tokens.len()
-                    && let Ok(num) = tokens[idx + 1].parse::<u8>()
-                {
+                if let Some(num) = tokens.get(idx + 1).and_then(|token| parse_number(token)) {
                     sort_order = SortOrder::Desc;
                     sort_by = SortBy::CreatedAt;
                     search_limit = num;
@@ -71,9 +68,7 @@ pub fn parse_query(search_query: &str) -> Result<(ProfileFilters, SearchQuery)> 
                 }
             }
             "last" | "oldest" | "bottom" => {
-                if idx + 1 < tokens.len()
-                    && let Ok(num) = tokens[idx + 1].parse::<u8>()
-                {
+                if let Some(num) = tokens.get(idx + 1).and_then(|t| parse_number(t)) {
                     sort_order = SortOrder::Asc;
                     sort_by = SortBy::CreatedAt;
                     search_limit = num;
@@ -132,4 +127,42 @@ pub fn parse_query(search_query: &str) -> Result<(ProfileFilters, SearchQuery)> 
             order: Some(sort_order),
         },
     ))
+}
+
+fn parse_number(num_str: &str) -> Option<u8> {
+    if let Ok(num) = num_str.parse::<u8>() {
+        return Some(num);
+    }
+    match num_str {
+        "zero" => Some(0),
+        "one" => Some(1),
+        "two" => Some(2),
+        "three" => Some(3),
+        "four" => Some(4),
+        "five" => Some(5),
+        "six" => Some(6),
+        "seven" => Some(7),
+        "eight" => Some(8),
+        "nine" => Some(9),
+        "ten" => Some(10),
+        "eleven" => Some(11),
+        "twelve" => Some(12),
+        "thirteen" => Some(13),
+        "fourteen" => Some(14),
+        "fifteen" => Some(15),
+        "sixteen" => Some(16),
+        "seventeen" => Some(17),
+        "eighteen" => Some(18),
+        "nineteen" => Some(19),
+        "twenty" => Some(20),
+        "thirty" => Some(30),
+        "forty" => Some(40),
+        "fifty" => Some(50),
+        "sixty" => Some(60),
+        "seventy" => Some(70),
+        "eighty" => Some(80),
+        "ninety" => Some(90),
+        "hundred" => Some(100),
+        _ => None,
+    }
 }

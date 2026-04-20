@@ -317,3 +317,12 @@ lazy_static! {
         ])
     };
 }
+
+lazy_static! {
+    pub static ref COUNTRIES_LOWER: HashMap<String, &'static str> = {
+        COUNTRIES
+            .iter()
+            .map(|(&name, &code)| (name.to_lowercase(), code))
+            .collect()
+    };
+}

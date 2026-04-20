@@ -205,12 +205,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
 
 [[package]]
-name = "capitalize"
-version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6b5271031022835ee8c7582fe67403bd6cb3d962095787af7921027234bab5bf"
-
-[[package]]
 name = "cc"
 version = "1.2.60"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2097,7 +2091,6 @@ name = "stage1"
 version = "0.1.0"
 dependencies = [
  "axum",
- "capitalize",
  "chrono",
  "dotenvy",
  "futures",
