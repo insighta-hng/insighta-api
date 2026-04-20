@@ -29,12 +29,14 @@ pub fn parse_query(search_query: &str) -> Result<(ProfileFilters, SearchQuery)> 
 
         match token {
             "in" | "from" => {
-                let next_token = tokens[idx + 1].capitalize();
-                if !is_parsed_country && COUNTRIES.contains_key(next_token.as_str()) {
-                    filters.country_id =
-                        Some(COUNTRIES.get(next_token.as_str()).unwrap().to_string());
-                    is_parsed_country = true;
-                    is_value_parsed = true;
+                if idx + 1 < tokens.len() {
+                    let next_token = tokens[idx + 1].capitalize();
+                    if !is_parsed_country && COUNTRIES.contains_key(next_token.as_str()) {
+                        filters.country_id =
+                            Some(COUNTRIES.get(next_token.as_str()).unwrap().to_string());
+                        is_parsed_country = true;
+                        is_value_parsed = true;
+                    }
                 }
             }
             "young" => {
