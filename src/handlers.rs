@@ -48,10 +48,10 @@ pub async fn create_profile(
         name: name.to_string(),
         gender: gender_res.gender.unwrap_or_else(|| "unknown".to_string()),
         gender_probability: (gender_res.gender_probability * 100.0).round() / 100.0,
-        sample_size: gender_res.sample_size,
         age: age_res.age.unwrap_or(0),
         age_group: format!("{:?}", age_res.age_group).to_lowercase(),
         country_id: country_res.country_id,
+        country_name: country_res.country_name,
         country_probability: (country_res.country_probability * 100.0).round() / 100.0,
         created_at: chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
     };
@@ -104,9 +104,13 @@ pub async fn list_profiles(
             id: profile.id,
             name: profile.name,
             gender: profile.gender,
+            gender_probability: profile.gender_probability,
             age: profile.age,
             age_group: profile.age_group,
             country_id: profile.country_id,
+            country_name: profile.country_name,
+            country_probability: profile.country_probability,
+            created_at: profile.created_at,
         })
         .collect();
 

@@ -14,5 +14,6 @@ pub struct NationalizeRawResponse {
 #[derive(Debug, Deserialize)]
 pub struct NationalizeResponse {
     pub country_id: String,
+    pub country_name: String,
     pub country_probability: f64,
 }

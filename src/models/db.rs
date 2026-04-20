@@ -14,10 +14,10 @@ pub struct Profile {
     pub name: String,
     pub gender: String,
     pub gender_probability: f64,
-    pub sample_size: u64,
     pub age: u8,
     pub age_group: String,
     pub country_id: String,
+    pub country_name: String,
     pub country_probability: f64,
     pub created_at: String,
 }
