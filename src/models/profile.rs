@@ -69,3 +69,12 @@ pub struct ProfileQuery {
     pub page: Option<u32>,
     pub limit: Option<u32>,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct SearchQuery {
+    pub q: Option<String>,
+    pub sort_by: Option<SortBy>,
+    pub order: Option<SortOrder>,
+    pub page: Option<u32>,
+    pub limit: Option<u32>,
+}

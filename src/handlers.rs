@@ -5,9 +5,10 @@ use crate::{
         db::{Profile, ProfileFilters},
         profile::{
             CreateProfileRequest, ProfileListEntry, ProfileListResponse, ProfileQuery,
-            ProfileResponse,
+            ProfileResponse, SearchQuery,
         },
     },
+    parser::parse_query,
     utils::{fetch_age_data, fetch_country_data, fetch_gender_data, validate_name},
 };
 use axum::{
@@ -146,4 +147,61 @@ pub async fn delete_profile(
     }
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+pub async fn search_profiles(
+    State(state): State<AppState>,
+    Query(query): Query<SearchQuery>,
+) -> Result<impl IntoResponse> {
+    let q = query
+        .q
+        .ok_or_else(|| AppError::BadRequest("Missing or empty parameter".to_string()))?;
+    if q.trim().is_empty() {
+        return Err(AppError::BadRequest(
+            "Missing or empty parameter".to_string(),
+        ));
+    }
+
+    let (filters, parsed_search_query) = parse_query(&q)?;
+
+    let page = query.page.unwrap_or(1).max(1);
+    let limit = query
+        .limit
+        .unwrap_or(parsed_search_query.limit.unwrap_or(10))
+        .min(50);
+    let sort_by = query
+        .sort_by
+        .unwrap_or(parsed_search_query.sort_by.unwrap_or_default());
+    let order = query
+        .order
+        .unwrap_or(parsed_search_query.order.unwrap_or_default());
+
+    let (profiles, total) = state
+        .db
+        .find_paginated(filters, sort_by, order, page, limit)
+        .await?;
+
+    let data: Vec<ProfileListEntry> = profiles
+        .into_iter()
+        .map(|profile| ProfileListEntry {
+            id: profile.id,
+            name: profile.name,
+            gender: profile.gender,
+            gender_probability: profile.gender_probability,
+            age: profile.age,
+            age_group: profile.age_group,
+            country_id: profile.country_id,
+            country_name: profile.country_name,
+            country_probability: profile.country_probability,
+            created_at: profile.created_at,
+        })
+        .collect();
+
+    Ok(Json(ProfileListResponse {
+        status: "success".into(),
+        page,
+        limit,
+        total,
+        data,
+    }))
 }
