@@ -1,5 +1,5 @@
 [package]
-name = "stage1"
+name = "stage2"
 version = "0.1.0"
 edition = "2024"
 
@@ -21,9 +21,9 @@ uuid = { version = "1.23.1", features = ["v7"] }
 lazy_static = "1.5.0"
 
 [[bin]]
-name = "stage1"
+name = "stage2"
 path = "src/main.rs"
 
 [lib]
-name = "stage1"
+name = "stage2"
 path = "src/lib.rs"

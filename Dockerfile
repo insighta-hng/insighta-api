@@ -19,9 +19,9 @@ RUN mkdir src && \
 
 # Build dependencies only
 RUN cargo build --release || true
-RUN rm -rf target/release/.fingerprint/stage1-* \
-    target/release/deps/stage1* \
-    target/release/deps/libstage1*
+RUN rm -rf target/release/.fingerprint/stage2-* \
+    target/release/deps/stage2* \
+    target/release/deps/libstage2*
 
 # Copy source code
 COPY src ./src
@@ -40,10 +40,10 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Copy binary from builder
-COPY --from=builder /app/target/release/stage1 /app/stage1
+COPY --from=builder /app/target/release/stage2 /app/stage2
 
 ENV RUST_LOG=info
 
 EXPOSE 3000
 
-ENTRYPOINT ["/app/stage1"]
+ENTRYPOINT ["/app/stage2"]

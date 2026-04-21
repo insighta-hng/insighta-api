@@ -1,6 +1,6 @@
 use mongodb::bson::doc;
 use mongodb::options::{ClientOptions, ServerApi, ServerApiVersion};
-use stage1::{
+use stage2::{
     AppState,
     client::ReqwestClient,
     create_app,
@@ -38,7 +38,7 @@ async fn main() -> Result<()> {
     tracing::info!("Successfully connected to MongoDB Atlas");
 
     let db = mongo_client.database("stage1");
-    let profile_repo = stage1::models::db::ProfileRepo::new(&db);
+    let profile_repo = stage2::models::db::ProfileRepo::new(&db);
     profile_repo.create_indexes().await?;
 
     let state = AppState {
