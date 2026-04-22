@@ -13,7 +13,7 @@ use crate::{
 };
 use axum::{
     Json,
-    extract::{Path, Query, State, rejection::JsonRejection},
+    extract::{Path, Query, State, rejection::{JsonRejection, QueryRejection}},
     http::StatusCode,
     response::IntoResponse,
 };
@@ -89,8 +89,11 @@ pub async fn get_profile(
 
 pub async fn list_profiles(
     State(state): State<AppState>,
-    Query(query): Query<ProfileQuery>,
+    query: std::result::Result<Query<ProfileQuery>, QueryRejection>,
 ) -> Result<impl IntoResponse> {
+    let Query(query) = query.map_err(|_| {
+        AppError::UnprocessableEntity("Invalid query parameters".to_string())
+    })?;
     let filters = ProfileFilters {
         gender: query.gender,
         country_id: query.country_id,
@@ -151,8 +154,11 @@ pub async fn delete_profile(
 
 pub async fn search_profiles(
     State(state): State<AppState>,
-    Query(query): Query<SearchQuery>,
+    query: std::result::Result<Query<SearchQuery>, QueryRejection>,
 ) -> Result<impl IntoResponse> {
+    let Query(query) = query.map_err(|_| {
+        AppError::UnprocessableEntity("Invalid query parameters".to_string())
+    })?;
     let q = query
         .q
         .ok_or_else(|| AppError::BadRequest("Missing or empty parameter".to_string()))?;
