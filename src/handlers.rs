@@ -108,8 +108,8 @@ pub async fn get_profile(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse> {
-    let uuid =
-        Uuid::parse_str(&id).map_err(|_| AppError::BadRequest("Invalid parameter type".into()))?;
+    let uuid = Uuid::parse_str(&id)
+        .map_err(|_| AppError::UnprocessableEntity("Invalid parameter type".into()))?;
     let profile = state
         .db
         .find_by_id(uuid)
@@ -193,8 +193,8 @@ pub async fn delete_profile(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse> {
-    let uuid =
-        Uuid::parse_str(&id).map_err(|_| AppError::BadRequest("Invalid parameter type".into()))?;
+    let uuid = Uuid::parse_str(&id)
+        .map_err(|_| AppError::UnprocessableEntity("Invalid parameter type".into()))?;
     let deleted = state.db.delete_by_id(uuid).await?;
 
     if !deleted {

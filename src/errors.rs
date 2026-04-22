@@ -65,7 +65,7 @@ impl AppError {
                 }
                 AppError::UpstreamInvalidResponse(api) => {
                     tracing::error!("{} returned an invalid response", api);
-                    format!("{} returned an invalid response", api)
+                    "Server failure".to_string()
                 }
                 AppError::IoError(msg) => {
                     tracing::error!("{}", msg);
