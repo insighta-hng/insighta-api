@@ -35,6 +35,7 @@ A name classification and demographic intelligence service built with Rust. Inte
 
    ```env
    DATABASE_URL=mongodb+srv://<user>:<password>@<cluster>.mongodb.net/?retryWrites=true&w=majority
+   DATABASE_NAME=test
    ```
 
 3. Run the server:
@@ -44,6 +45,12 @@ A name classification and demographic intelligence service built with Rust. Inte
    ```
 
    The server binds to `0.0.0.0:8000`.
+
+---
+
+## Data Seeding
+
+On startup, the application runs a non-blocking background seeder. It reads from `seed_profiles.json` and inserts any missing records into MongoDB idempotently. If the database is already fully seeded, it skips the operation entirely.
 
 ---
 
@@ -66,12 +73,12 @@ All responses use `Content-Type: application/json`. All timestamps are UTC ISO 8
 { "status": "error", "message": "<description>" }
 ```
 
-| Status | Meaning |
-|--------|---------|
-| 400 | Missing or empty parameter |
-| 404 | Profile not found |
-| 422 | Invalid parameter type |
-| 502 | External API returned unusable data |
+| Status | Meaning                             |
+| ------ | ----------------------------------- |
+| 400    | Missing or empty parameter          |
+| 404    | Profile not found                   |
+| 422    | Invalid parameter type              |
+| 502    | External API returned unusable data |
 
 ---
 
@@ -138,19 +145,19 @@ List profiles with optional filtering, sorting, and pagination.
 
 **Query parameters**
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `gender` | string | `male` or `female` (case-insensitive) |
-| `age_group` | string | `child`, `teenager`, `adult`, `senior` (case-insensitive) |
-| `country_id` | string | ISO 3166-1 alpha-2 code, e.g. `NG` (case-insensitive) |
-| `min_age` | integer | Minimum age (inclusive) |
-| `max_age` | integer | Maximum age (inclusive) |
-| `min_gender_probability` | float | Minimum gender confidence score |
-| `min_country_probability` | float | Minimum country confidence score |
-| `sort_by` | string | `age`, `created_at`, or `gender_probability` (default: `age`) |
-| `order` | string | `asc` or `desc` (default: `asc`) |
-| `page` | integer | Page number, 1-indexed (default: `1`) |
-| `limit` | integer | Results per page, max 50 (default: `10`) |
+| Parameter                 | Type    | Description                                                   |
+| ------------------------- | ------- | ------------------------------------------------------------- |
+| `gender`                  | string  | `male` or `female` (case-insensitive)                         |
+| `age_group`               | string  | `child`, `teenager`, `adult`, `senior` (case-insensitive)     |
+| `country_id`              | string  | ISO 3166-1 alpha-2 code, e.g. `NG` (case-insensitive)         |
+| `min_age`                 | integer | Minimum age (inclusive)                                       |
+| `max_age`                 | integer | Maximum age (inclusive)                                       |
+| `min_gender_probability`  | float   | Minimum gender confidence score                               |
+| `min_country_probability` | float   | Minimum country confidence score                              |
+| `sort_by`                 | string  | `age`, `created_at`, or `gender_probability` (default: `age`) |
+| `order`                   | string  | `asc` or `desc` (default: `asc`)                              |
+| `page`                    | integer | Page number, 1-indexed (default: `1`)                         |
+| `limit`                   | integer | Results per page, max 50 (default: `10`)                      |
 
 All filters are combinable. Every condition must match.
 
@@ -221,22 +228,22 @@ The search endpoint uses a rule-based, single-pass token scanner. There is no AI
 
 ### Gender keywords
 
-| Keywords | Filter set |
-|----------|-----------|
-| `male`, `males`, `man`, `men`, `boy`, `boys` | `gender=male` |
+| Keywords                                                                 | Filter set      |
+| ------------------------------------------------------------------------ | --------------- |
+| `male`, `males`, `man`, `men`, `boy`, `boys`                             | `gender=male`   |
 | `female`, `females`, `woman`, `women`, `girl`, `girls`, `lady`, `ladies` | `gender=female` |
 
 If both male and female keywords appear in the same query, the gender filter is dropped and results are not filtered by gender.
 
 ### Age group keywords
 
-| Keywords | Filter set |
-|----------|-----------|
-| `child`, `children`, `kid`, `kids` | `age_group=child` |
-| `teenager`, `teenagers`, `teen`, `teens` | `age_group=teenager` |
-| `adult`, `adults`, `grownup`, `grownups`, `middle-aged` | `age_group=adult` |
-| `senior`, `seniors`, `old`, `elderly` | `age_group=senior` |
-| `young` | `min_age=16`, `max_age=24` |
+| Keywords                                                | Filter set                 |
+| ------------------------------------------------------- | -------------------------- |
+| `child`, `children`, `kid`, `kids`                      | `age_group=child`          |
+| `teenager`, `teenagers`, `teen`, `teens`                | `age_group=teenager`       |
+| `adult`, `adults`, `grownup`, `grownups`, `middle-aged` | `age_group=adult`          |
+| `senior`, `seniors`, `old`, `elderly`                   | `age_group=senior`         |
+| `young`                                                 | `min_age=16`, `max_age=24` |
 
 `young` is a special case. It maps to an age range (16–24) rather than a stored age group, and is used for query purposes only. It is not a value that appears in the database.
 
@@ -244,8 +251,8 @@ If both male and female keywords appear in the same query, the gender filter is 
 
 These work as bigrams — the keyword must be followed immediately by a number (either digits or written out, e.g. "20" or "twenty").
 
-| Pattern | Filter set |
-|---------|-----------|
+| Pattern                        | Filter set  |
+| ------------------------------ | ----------- |
 | `above N`, `over N`, `least N` | `min_age=N` |
 | `below N`, `under N`, `most N` | `max_age=N` |
 
@@ -253,10 +260,10 @@ These work as bigrams — the keyword must be followed immediately by a number (
 
 ### Country keywords
 
-| Pattern | Filter set |
-|---------|-----------|
+| Pattern                          | Filter set              |
+| -------------------------------- | ----------------------- |
 | `from [country]`, `in [country]` | `country_id=<ISO code>` |
-| Entire query is a country name | `country_id=<ISO code>` |
+| Entire query is a country name   | `country_id=<ISO code>` |
 
 Country names are matched against a static ISO 3166-1 lookup table of ~250 entries in a fully case-insensitive manner. The parser scans up to 7 tokens ahead after `from`/`in` to robustly resolve multi-word countries like "United States of America" or "Bosnia and Herzegovina".
 
@@ -264,27 +271,27 @@ Country names are matched against a static ISO 3166-1 lookup table of ~250 entri
 
 These also work as bigrams — the keyword must be followed immediately by a number (either digits or written out).
 
-| Pattern | Behaviour |
-|---------|-----------|
-| `top N`, `first N`, `latest N` | Sort by `created_at` descending, limit to N results |
-| `last N`, `oldest N`, `bottom N` | Sort by `created_at` ascending, limit to N results |
+| Pattern                          | Behaviour                                           |
+| -------------------------------- | --------------------------------------------------- |
+| `top N`, `first N`, `latest N`   | Sort by `created_at` descending, limit to N results |
+| `last N`, `oldest N`, `bottom N` | Sort by `created_at` ascending, limit to N results  |
 
 ### Example mappings
 
-| Query | Filters applied |
-|-------|----------------|
-| `young males` | `gender=male`, `min_age=16`, `max_age=24` |
-| `females above 30` | `gender=female`, `min_age=30` |
-| `people from angola` | `country_id=AO` |
-| `adult males from kenya` | `gender=male`, `age_group=adult`, `country_id=KE` |
-| `male and female teenagers above 17` | `age_group=teenager`, `min_age=17` |
-| `top 5 women` | `gender=female`, sort `created_at` desc, limit 5 |
-| `elderly men in japan` | `gender=male`, `age_group=senior`, `country_id=JP` |
-| `nigeria` | `country_id=NG` |
+| Query                                | Filters applied                                    |
+| ------------------------------------ | -------------------------------------------------- |
+| `young males`                        | `gender=male`, `min_age=16`, `max_age=24`          |
+| `females above 30`                   | `gender=female`, `min_age=30`                      |
+| `people from angola`                 | `country_id=AO`                                    |
+| `adult males from kenya`             | `gender=male`, `age_group=adult`, `country_id=KE`  |
+| `male and female teenagers above 17` | `age_group=teenager`, `min_age=17`                 |
+| `top 5 women`                        | `gender=female`, sort `created_at` desc, limit 5   |
+| `elderly men in japan`               | `gender=male`, `age_group=senior`, `country_id=JP` |
+| `nigeria`                            | `country_id=NG`                                    |
 
 ### Stop words
 
-Common conversational words (`people`, `person`, `show`, `find`, `give`, `me`, `who`, `are`, `is`, `list`, `all`, `everyone`, `anybody`, `someone`, `with`, `the`, `a`, `an`, `of`, `that`, `have`, `profiles`, `records`, `entries`) are formally identified and safely ignored. Because of this, a purely conversational query containing no demographic filters, such as "show me all people", will succeed and return an unfiltered list of profiles, rather than throwing a 400 error.
+Common conversational words (`people`, `person`, `show`, `find`, `give`, `me`, `who`, `are`, `is`, `list`, `all`, `everyone`, `anybody`, `someone`, `with`, `the`, `a`, `an`, `of`, `that`, `have`, `profiles`, `records`, `entries`) are formally identified and safely ignored. Because of this, a purely conversational query containing no demographic filters, such as "show me all people", will correctly return a 400 error (`"Unable to interpret query"`) because no meaningful constraints were parsed.
 
 ---
 
@@ -292,7 +299,7 @@ Common conversational words (`people`, `person`, `show`, `find`, `give`, `me`, `
 
 The parser is intentionally rule-based and covers the most common demographic query patterns. The following cases are explicitly not handled.
 
-**Country matching requires prepositions.** Unless the country name is the *entire* query (e.g., `q=nigeria`), the parser will only recognize a country if it is immediately preceded by `in` or `from`. A query like "young males in japan" works perfectly, but "young males japan" will fail to parse the country.
+**Country matching requires prepositions.** Unless the country name is the _entire_ query (e.g., `q=nigeria`), the parser will only recognize a country if it is immediately preceded by `in` or `from`. A query like "young males in japan" works perfectly, but "young males japan" will fail to parse the country.
 
 **Strict phrasing and bigram ordering.** Age ranges and limit modifiers strictly require the recognized keyword to immediately precede the number. "above 30" works, but "30 and above", "30+", or "older than 30" will not trigger the filter.
 
@@ -310,27 +317,27 @@ The parser is intentionally rule-based and covers the most common demographic qu
 
 ## Database Schema
 
-| Field | Type | Notes |
-|-------|------|-------|
-| `id` | UUID v7 | Primary key |
-| `name` | string (unique) | Person's name |
-| `gender` | string | `male` or `female` |
-| `gender_probability` | float | Rounded to 2 decimal places |
-| `age` | integer | |
-| `age_group` | string | `child`, `teenager`, `adult`, or `senior` |
-| `country_id` | string | ISO 3166-1 alpha-2 code |
-| `country_name` | string | Full country name |
-| `country_probability` | float | Rounded to 2 decimal places |
-| `created_at` | string | UTC ISO 8601 |
+| Field                 | Type            | Notes                                     |
+| --------------------- | --------------- | ----------------------------------------- |
+| `id`                  | UUID v7         | Primary key                               |
+| `name`                | string (unique) | Person's name                             |
+| `gender`              | string          | `male` or `female`                        |
+| `gender_probability`  | float           | Rounded to 2 decimal places               |
+| `age`                 | integer         |                                           |
+| `age_group`           | string          | `child`, `teenager`, `adult`, or `senior` |
+| `country_id`          | string          | ISO 3166-1 alpha-2 code                   |
+| `country_name`        | string          | Full country name                         |
+| `country_probability` | float           | Rounded to 2 decimal places               |
+| `created_at`          | string          | UTC ISO 8601                              |
 
 **Age group classification:**
 
-| Range | Group |
-|-------|-------|
-| 0–12 | child |
+| Range | Group    |
+| ----- | -------- |
+| 0–12  | child    |
 | 13–19 | teenager |
-| 20–59 | adult |
-| 60+ | senior |
+| 20–59 | adult    |
+| 60+   | senior   |
 
 **Indexes:**
 
@@ -340,5 +347,6 @@ The parser is intentionally rule-based and covers the most common demographic qu
 - Single on `age` for range queries
 - Single on `created_at` for sort
 - Single on `gender_probability` for sort and probability filter
+- Single on `country_probability` for probability filter
 
 ---
