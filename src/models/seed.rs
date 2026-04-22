@@ -1,9 +1,10 @@
+use crate::models::gender::Gender;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
 pub struct SeedProfile {
     pub name: String,
-    pub gender: String,
+    pub gender: Gender,
     pub gender_probability: f64,
     pub age: u8,
     pub age_group: String,

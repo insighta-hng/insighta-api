@@ -1,7 +1,10 @@
 use crate::countries::COUNTRIES_LOWER;
 use crate::errors::{AppError, Result};
-use crate::models::db::ProfileFilters;
-use crate::models::profile::{SearchQuery, SortBy, SortOrder};
+use crate::models::{
+    db::ProfileFilters,
+    gender::Gender,
+    profile::{SearchQuery, SortBy, SortOrder},
+};
 
 /// Parses a natural language search query into structured database filters.
 ///
@@ -122,9 +125,9 @@ pub fn parse_query(search_query: &str) -> Result<(ProfileFilters, SearchQuery)> 
     }
 
     if males && !females {
-        filters.gender = Some("male".to_string());
+        filters.gender = Some(Gender::Male);
     } else if females && !males {
-        filters.gender = Some("female".to_string());
+        filters.gender = Some(Gender::Female);
     } else {
         filters.gender = None;
     }

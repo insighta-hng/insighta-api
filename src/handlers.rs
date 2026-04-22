@@ -67,7 +67,7 @@ pub async fn create_profile(
     let new_profile = Profile {
         id: Uuid::now_v7(),
         name: name.to_string(),
-        gender: gender_res.gender.unwrap_or_else(|| "unknown".to_string()),
+        gender: gender_res.gender.unwrap(), // Safe because fetch_gender_data validates it
         gender_probability: (gender_res.gender_probability * 100.0).round() / 100.0,
         age: age_res.age.unwrap_or(0),
         age_group: format!("{:?}", age_res.age_group).to_lowercase(),

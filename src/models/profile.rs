@@ -1,4 +1,6 @@
-use crate::models::db::Profile;
+use crate::{
+    models::{db::Profile, gender::Gender},
+};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -13,7 +15,7 @@ pub struct CreateProfileRequest {
 pub struct ProfileDto {
     pub id: Uuid,
     pub name: String,
-    pub gender: String,
+    pub gender: Gender,
     pub gender_probability: f64,
     pub age: u8,
     pub age_group: String,
@@ -88,7 +90,7 @@ pub enum SortOrder {
 
 #[derive(Debug, Deserialize)]
 pub struct ProfileQuery {
-    pub gender: Option<String>,
+    pub gender: Option<Gender>,
     pub age_group: Option<String>,
     pub country_id: Option<String>,
     pub min_age: Option<u8>,

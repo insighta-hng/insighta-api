@@ -1,6 +1,9 @@
 use stage2::{
     errors::AppError,
-    models::profile::{SortBy, SortOrder},
+    models::{
+        gender::Gender,
+        profile::{SortBy, SortOrder},
+    },
     parser::parse_query,
 };
 
@@ -16,10 +19,10 @@ fn test_stop_words_only() {
 #[test]
 fn test_gender_keywords() {
     let (filters, _) = parse_query("young males").unwrap();
-    assert_eq!(filters.gender.as_deref(), Some("male"));
+    assert_eq!(filters.gender, Some(Gender::Male));
 
     let (filters, _) = parse_query("adult females").unwrap();
-    assert_eq!(filters.gender.as_deref(), Some("female"));
+    assert_eq!(filters.gender, Some(Gender::Female));
 
     // Both genders cancel out
     let (filters, _) = parse_query("male and female teenagers").unwrap();
@@ -30,7 +33,7 @@ fn test_gender_keywords() {
     assert_eq!(filters.gender, None);
 
     let (filters, _) = parse_query("ladies").unwrap();
-    assert_eq!(filters.gender.as_deref(), Some("female"));
+    assert_eq!(filters.gender, Some(Gender::Female));
 }
 
 #[test]
@@ -110,7 +113,7 @@ fn test_country_matching() {
     // Missing preposition fails to match country embedded in query
     let (filters, _) = parse_query("males nigeria").unwrap();
     assert_eq!(filters.country_id, None);
-    assert_eq!(filters.gender.as_deref(), Some("male"));
+    assert_eq!(filters.gender, Some(Gender::Male));
 }
 
 #[test]
@@ -130,7 +133,7 @@ fn test_sorting_and_limits() {
 fn test_sorting_and_limit_overflow() {
     // u8 limit maximum is 255. 300 should be ignored.
     let (filters, search) = parse_query("top 300 males").unwrap();
-    assert_eq!(filters.gender.as_deref(), Some("male"));
+    assert_eq!(filters.gender, Some(Gender::Male));
     // Since 300 overflows u8, the 'top 300' bigram is not fully recognized.
     // It falls back to default limit.
     assert_eq!(search.limit, Some(10));
@@ -140,7 +143,7 @@ fn test_sorting_and_limit_overflow() {
 fn test_complex_query() {
     let (filters, search) = parse_query("top 5 elderly men in japan above 70").unwrap();
 
-    assert_eq!(filters.gender.as_deref(), Some("male"));
+    assert_eq!(filters.gender, Some(Gender::Male));
     assert_eq!(filters.age_group.as_deref(), Some("senior"));
     assert_eq!(filters.country_id.as_deref(), Some("JP"));
     assert_eq!(filters.min_age, Some(70));
@@ -158,7 +161,7 @@ fn test_complex_query_with_noise() {
     )
     .unwrap();
 
-    assert_eq!(filters.gender.as_deref(), Some("male"));
+    assert_eq!(filters.gender, Some(Gender::Male));
     assert_eq!(filters.country_id.as_deref(), None);
     assert_eq!(filters.min_age, Some(16));
     assert_eq!(filters.max_age, Some(24));

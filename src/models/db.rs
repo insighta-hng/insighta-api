@@ -10,7 +10,10 @@ use uuid::Uuid;
 
 use crate::{
     errors::{AppError, Result},
-    models::profile::{SortBy, SortOrder},
+    models::{
+        gender::Gender,
+        profile::{SortBy, SortOrder},
+    },
 };
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
@@ -18,7 +21,7 @@ pub struct Profile {
     #[serde(rename = "_id", with = "bson::serde_helpers::uuid_1_as_binary")]
     pub id: Uuid,
     pub name: String,
-    pub gender: String,
+    pub gender: Gender,
     pub gender_probability: f64,
     pub age: u8,
     pub age_group: String,
@@ -31,7 +34,7 @@ pub struct Profile {
 
 #[derive(Debug, Default)]
 pub struct ProfileFilters {
-    pub gender: Option<String>,
+    pub gender: Option<Gender>,
     pub country_id: Option<String>,
     pub age_group: Option<String>,
     pub min_age: Option<u8>,
@@ -162,10 +165,7 @@ impl ProfileRepo {
         let mut filter_doc = bson::doc! {};
 
         if let Some(gender) = filters.gender {
-            filter_doc.insert(
-                "gender",
-                bson::doc! { "$regex": format!("^{}$", gender), "$options": "i" },
-            );
+            filter_doc.insert("gender", gender.to_string());
         }
 
         if let Some(country) = filters.country_id {
