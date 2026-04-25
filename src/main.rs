@@ -1,3 +1,6 @@
+use std::sync::Arc;
+
+use dashmap::DashMap;
 use insighta_api::{
     AppState,
     client::ReqwestClient,
@@ -47,12 +50,17 @@ async fn main() -> Result<()> {
     let user_repo = repo::user::UserRepo::new(&db);
     user_repo.create_indexes().await?;
 
+    let refresh_token_repo = repo::refresh_token::RefreshTokenRepo::new(&db);
+    refresh_token_repo.create_indexes().await?;
+
     tokio::spawn(seeder::run(profile_repo.clone()));
 
     let state = AppState {
         client: reqwest_client,
         profile_repo,
         user_repo,
+        refresh_token_repo,
+        oauth_states: Arc::new(DashMap::new()),
     };
 
     let app = create_app(state);

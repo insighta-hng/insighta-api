@@ -1,3 +1,6 @@
+use dashmap::DashMap;
+
+pub mod auth;
 pub mod client;
 pub mod countries;
 pub mod errors;
@@ -17,6 +20,8 @@ pub struct AppState {
     pub client: crate::client::ReqwestClient,
     pub profile_repo: crate::repo::profile::ProfileRepo,
     pub user_repo: crate::repo::user::UserRepo,
+    pub refresh_token_repo: crate::repo::refresh_token::RefreshTokenRepo,
+    pub oauth_states: std::sync::Arc<DashMap<String, String>>,
 }
 
 pub fn create_app(state: AppState) -> axum::Router {
@@ -25,18 +30,36 @@ pub fn create_app(state: AppState) -> axum::Router {
         .allow_methods(tower_http::cors::Any)
         .allow_headers(tower_http::cors::Any);
 
+    let auth_router = axum::Router::new()
+        .route(
+            "/auth/github",
+            axum::routing::get(handlers::auth::github_init),
+        )
+        .route(
+            "/auth/github/callback",
+            axum::routing::get(handlers::auth::github_callback),
+        )
+        .route(
+            "/auth/refresh",
+            axum::routing::post(handlers::auth::refresh),
+        )
+        .route("/auth/logout", axum::routing::post(handlers::auth::logout));
+
     axum::Router::new()
+        .merge(auth_router)
         .route(
             "/api/profiles",
-            axum::routing::get(handlers::list_profiles).post(handlers::create_profile),
+            axum::routing::get(handlers::profile::list_profiles)
+                .post(handlers::profile::create_profile),
         )
         .route(
             "/api/profiles/search",
-            axum::routing::get(handlers::search_profiles),
+            axum::routing::get(handlers::profile::search_profiles),
         )
         .route(
             "/api/profiles/{id}",
-            axum::routing::get(handlers::get_profile).delete(handlers::delete_profile),
+            axum::routing::get(handlers::profile::get_profile)
+                .delete(handlers::profile::delete_profile),
         )
         .layer(
             tower_http::trace::TraceLayer::new_for_http().make_span_with(

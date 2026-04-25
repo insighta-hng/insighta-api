@@ -41,6 +41,12 @@ pub enum AppError {
     /// The requested resource (e.g., a specific profile ID) was not found.
     #[error("{0}")]
     NotFound(String),
+    /// Authentication failed (missing, invalid, or expired token).
+    #[error("{0}")]
+    Unauthorized(String),
+    /// Authenticated but not permitted to perform this action.
+    #[error("{0}")]
+    Forbidden(String),
 }
 
 impl AppError {
@@ -48,8 +54,10 @@ impl AppError {
         match self {
             AppError::ServiceUnavailable(_) | AppError::UpstreamInvalidResponse(_) => 502,
             AppError::BadRequest(_) => 400,
-            AppError::UnprocessableEntity(_) => 422,
+            AppError::Unauthorized(_) => 401,
+            AppError::Forbidden(_) => 403,
             AppError::NotFound(_) => 404,
+            AppError::UnprocessableEntity(_) => 422,
             AppError::IoError(_) | AppError::TryInitError(_) | AppError::InternalServerError(_) => {
                 500
             }
@@ -81,7 +89,9 @@ impl AppError {
                 }
                 AppError::BadRequest(msg)
                 | AppError::UnprocessableEntity(msg)
-                | AppError::NotFound(msg) => msg.to_string(),
+                | AppError::NotFound(msg)
+                | AppError::Unauthorized(msg)
+                | AppError::Forbidden(msg) => msg.to_string(),
             },
             status: "error".to_string(),
         }

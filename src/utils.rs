@@ -1,11 +1,13 @@
 use serde_json::Value;
 
 use crate::{
+    AppState,
     client::ReqwestClient,
     countries::COUNTRIES,
     errors::{AppError, Result},
     models::{
         age::{AgeGroup, AgifyResponse},
+        auth::EmailEntry,
         country::{NationalizeRawResponse, NationalizeResponse},
         gender::GenderizeResponse,
     },
@@ -109,4 +111,31 @@ pub async fn fetch_country_data(
         country_id: best_country.country_id,
         country_probability: best_country.probability,
     })
+}
+
+pub async fn fetch_github_primary_email(state: &AppState, github_token: &str) -> Result<String> {
+    let emails: Vec<EmailEntry> = state
+        .client
+        .get()
+        .get("https://api.github.com/user/emails")
+        .header("Authorization", format!("Bearer {}", github_token))
+        .header("User-Agent", "insighta-api")
+        .send()
+        .await
+        .map_err(|e| AppError::ServiceUnavailable(e.to_string()))?
+        .json()
+        .await
+        .map_err(|_| {
+            AppError::UpstreamInvalidResponse("Failed to fetch GitHub emails".to_string())
+        })?;
+
+    emails
+        .into_iter()
+        .find(|e| e.primary && e.verified)
+        .map(|e| e.email)
+        .ok_or_else(|| {
+            AppError::UpstreamInvalidResponse(
+                "No verified primary email on GitHub account".to_string(),
+            )
+        })
 }
