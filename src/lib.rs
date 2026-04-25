@@ -15,7 +15,8 @@ pub struct RequestId(pub String);
 #[derive(Clone, Debug)]
 pub struct AppState {
     pub client: crate::client::ReqwestClient,
-    pub db: crate::repo::profile::ProfileRepo,
+    pub profile_repo: crate::repo::profile::ProfileRepo,
+    pub user_repo: crate::repo::user::UserRepo,
 }
 
 pub fn create_app(state: AppState) -> axum::Router {

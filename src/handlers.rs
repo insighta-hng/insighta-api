@@ -44,7 +44,7 @@ pub async fn create_profile(
     let Json(payload) = payload.map_err(|e| AppError::BadRequest(e.body_text()))?;
     let name = validate_name(payload.name)?;
 
-    if let Some(existing) = state.db.find_by_name(&name).await? {
+    if let Some(existing) = state.profile_repo.find_by_name(&name).await? {
         return Ok((
             StatusCode::OK,
             Json(ProfileResponse {
@@ -75,7 +75,10 @@ pub async fn create_profile(
         created_at: chrono::Utc::now(),
     };
 
-    state.db.insert_profile(new_profile.clone()).await?;
+    state
+        .profile_repo
+        .insert_profile(new_profile.clone())
+        .await?;
 
     Ok((
         StatusCode::CREATED,
@@ -109,7 +112,7 @@ pub async fn get_profile(
     let uuid = Uuid::parse_str(&id)
         .map_err(|_| AppError::UnprocessableEntity("Invalid parameter type".into()))?;
     let profile = state
-        .db
+        .profile_repo
         .find_by_id(uuid)
         .await?
         .ok_or_else(|| AppError::NotFound("Profile not found".into()))?;
@@ -158,7 +161,7 @@ pub async fn list_profiles(
     let order = query.order.unwrap_or_default();
 
     let (profiles, total) = state
-        .db
+        .profile_repo
         .find_paginated(filters, sort_by, order, page, limit)
         .await?;
 
@@ -193,7 +196,7 @@ pub async fn delete_profile(
 ) -> Result<impl IntoResponse> {
     let uuid = Uuid::parse_str(&id)
         .map_err(|_| AppError::UnprocessableEntity("Invalid parameter type".into()))?;
-    let deleted = state.db.delete_by_id(uuid).await?;
+    let deleted = state.profile_repo.delete_by_id(uuid).await?;
 
     if !deleted {
         return Err(AppError::NotFound("Profile not found".into()));
@@ -247,7 +250,7 @@ pub async fn search_profiles(
         .unwrap_or(parsed_search_query.order.unwrap_or_default());
 
     let (profiles, total) = state
-        .db
+        .profile_repo
         .find_paginated(filters, sort_by, order, page, limit)
         .await?;
 

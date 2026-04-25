@@ -40,14 +40,19 @@ async fn main() -> Result<()> {
 
     let db_name = std::env::var("DATABASE_NAME").unwrap_or_else(|_| "stage2".to_string());
     let db = mongo_client.database(&db_name);
+
     let profile_repo = repo::profile::ProfileRepo::new(&db);
     profile_repo.create_indexes().await?;
+
+    let user_repo = repo::user::UserRepo::new(&db);
+    user_repo.create_indexes().await?;
 
     tokio::spawn(seeder::run(profile_repo.clone()));
 
     let state = AppState {
         client: reqwest_client,
-        db: profile_repo,
+        profile_repo,
+        user_repo,
     };
 
     let app = create_app(state);

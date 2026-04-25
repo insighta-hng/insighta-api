@@ -39,3 +39,11 @@ pub struct User {
     #[serde(with = "bson::serde_helpers::chrono_datetime_as_bson_datetime")]
     pub created_at: DateTime<Utc>,
 }
+
+#[derive(Debug)]
+pub struct GithubUserInfo {
+    pub github_id: String,
+    pub username: String,
+    pub email: String,
+    pub avatar_url: String,
+}
