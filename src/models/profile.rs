@@ -1,6 +1,4 @@
-use crate::{
-    models::{db::Profile, gender::Gender},
-};
+use crate::{models::gender::Gender, repo::profile::Profile};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

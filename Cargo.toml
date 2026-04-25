@@ -1,5 +1,5 @@
 [package]
-name = "stage2"
+name = "insighta_api"
 version = "0.1.0"
 edition = "2024"
 
@@ -22,9 +22,9 @@ bson = { version = "2.13.0", features = ["uuid-1", "chrono-0_4"] }
 lazy_static = "1.5.0"
 
 [[bin]]
-name = "stage2"
+name = "insighta_api"
 path = "src/main.rs"
 
 [lib]
-name = "stage2"
+name = "insighta_api"
 path = "src/lib.rs"

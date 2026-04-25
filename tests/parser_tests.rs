@@ -1,4 +1,4 @@
-use stage2::{
+use insighta_api::{
     errors::AppError,
     models::{
         gender::Gender,

@@ -1,12 +1,12 @@
-use mongodb::bson::doc;
-use mongodb::options::{ClientOptions, ServerApi, ServerApiVersion};
-use stage2::{
+use insighta_api::{
     AppState,
     client::ReqwestClient,
     create_app,
     errors::{AppError, Result},
-    models, seeder,
+    repo, seeder,
 };
+use mongodb::bson::doc;
+use mongodb::options::{ClientOptions, ServerApi, ServerApiVersion};
 use tokio::net::TcpListener;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -40,7 +40,7 @@ async fn main() -> Result<()> {
 
     let db_name = std::env::var("DATABASE_NAME").unwrap_or_else(|_| "stage2".to_string());
     let db = mongo_client.database(&db_name);
-    let profile_repo = models::db::ProfileRepo::new(&db);
+    let profile_repo = repo::profile::ProfileRepo::new(&db);
     profile_repo.create_indexes().await?;
 
     tokio::spawn(seeder::run(profile_repo.clone()));

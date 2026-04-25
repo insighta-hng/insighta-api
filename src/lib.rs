@@ -5,6 +5,7 @@ pub mod handlers;
 pub mod middleware;
 pub mod models;
 pub mod parser;
+pub mod repo;
 pub mod seeder;
 pub mod utils;
 
@@ -14,7 +15,7 @@ pub struct RequestId(pub String);
 #[derive(Clone, Debug)]
 pub struct AppState {
     pub client: crate::client::ReqwestClient,
-    pub db: crate::models::db::ProfileRepo,
+    pub db: crate::repo::profile::ProfileRepo,
 }
 
 pub fn create_app(state: AppState) -> axum::Router {
@@ -55,7 +56,9 @@ pub fn create_app(state: AppState) -> axum::Router {
                 },
             ),
         )
-        .layer(axum::middleware::from_fn(crate::middleware::request_id))
+        .layer(axum::middleware::from_fn(
+            crate::middleware::request_id::request_id,
+        ))
         .layer(cors)
         .with_state(state)
 }

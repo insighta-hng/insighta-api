@@ -1,8 +1,8 @@
 use std::path::Path;
 
-use crate::models::{
-    db::{Profile, ProfileRepo},
-    seed::SeedFile,
+use crate::{
+    models::seed::SeedFile,
+    repo::profile::{Profile, ProfileRepo},
 };
 use chrono::Utc;
 use uuid::Uuid;

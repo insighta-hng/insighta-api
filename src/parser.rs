@@ -1,10 +1,10 @@
 use crate::countries::COUNTRIES_LOWER;
 use crate::errors::{AppError, Result};
 use crate::models::{
-    db::ProfileFilters,
     gender::Gender,
     profile::{SearchQuery, SortBy, SortOrder},
 };
+use crate::repo::profile::ProfileFilters;
 
 /// Parses a natural language search query into structured database filters.
 ///

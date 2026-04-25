@@ -1,14 +1,12 @@
 use crate::{
     AppState,
     errors::{AppError, Result},
-    models::{
-        db::{Profile, ProfileFilters},
-        profile::{
-            CreateProfileRequest, ProfileDto, ProfileListResponse, ProfileQuery, ProfileResponse,
-            SearchQuery,
-        },
+    models::profile::{
+        CreateProfileRequest, ProfileDto, ProfileListResponse, ProfileQuery, ProfileResponse,
+        SearchQuery,
     },
     parser::parse_query,
+    repo::profile::{Profile, ProfileFilters},
     utils::{fetch_age_data, fetch_country_data, fetch_gender_data, validate_name},
 };
 use axum::{
