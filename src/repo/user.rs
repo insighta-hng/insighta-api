@@ -61,12 +61,14 @@ impl UserRepo {
 
         match self.find_by_github_id(&info.github_id).await? {
             Some(_existing) => {
+                let role = resolve_role(&info.github_id);
                 let update = bson::doc! {
                     "$set": {
                         "username": &info.username,
                         "email": &info.email,
                         "avatar_url": &info.avatar_url,
                         "last_login_at": bson::DateTime::from_millis(now.timestamp_millis()),
+                        "role": role.to_string(),
                     }
                 };
 
