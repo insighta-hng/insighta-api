@@ -88,12 +88,31 @@ pub enum SortBy {
     GenderProbability,
 }
 
+impl SortBy {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SortBy::Age => "age",
+            SortBy::CreatedAt => "created_at",
+            SortBy::GenderProbability => "gender_probability",
+        }
+    }
+}
+
 #[derive(Debug, Deserialize, Default, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum SortOrder {
     #[default]
     Asc,
     Desc,
+}
+
+impl SortOrder {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SortOrder::Asc => "asc",
+            SortOrder::Desc => "desc",
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]

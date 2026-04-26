@@ -156,18 +156,36 @@ pub fn build_list_response(
     page: u32,
     limit: u32,
     total: u64,
+    extra_params: &[(String, String)],
     data: Vec<ProfileDto>,
 ) -> ProfileListResponse {
     let total_pages = (total as f64 / limit as f64).ceil() as u64;
 
-    let self_ = format!("{}?page={}&limit={}", base_path, page, limit);
+    let extra: String = extra_params
+        .iter()
+        .map(|(k, v)| format!("&{}={}", k, v))
+        .collect();
+
+    let self_ = format!("{}?page={}&limit={}{}", base_path, page, limit, extra);
     let next = if (page as u64) < total_pages {
-        Some(format!("{}?page={}&limit={}", base_path, page + 1, limit))
+        Some(format!(
+            "{}?page={}&limit={}{}",
+            base_path,
+            page + 1,
+            limit,
+            extra
+        ))
     } else {
         None
     };
     let prev = if page > 1 {
-        Some(format!("{}?page={}&limit={}", base_path, page - 1, limit))
+        Some(format!(
+            "{}?page={}&limit={}{}",
+            base_path,
+            page - 1,
+            limit,
+            extra
+        ))
     } else {
         None
     };

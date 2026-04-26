@@ -150,6 +150,7 @@ pub async fn list_profiles(
 ) -> Result<impl IntoResponse> {
     let Query(query) =
         query.map_err(|_| AppError::UnprocessableEntity("Invalid query parameters".into()))?;
+
     let filters = ProfileFilters {
         gender: query.gender,
         country_id: query.country_id,
@@ -165,6 +166,34 @@ pub async fn list_profiles(
     let sort_by = query.sort_by.unwrap_or_default();
     let order = query.order.unwrap_or_default();
 
+    let extra_params = {
+        let mut params: Vec<(String, String)> = Vec::new();
+        if let Some(ref g) = filters.gender {
+            params.push(("gender".into(), g.to_string()));
+        }
+        if let Some(ref c) = filters.country_id {
+            params.push(("country_id".into(), c.clone()));
+        }
+        if let Some(ref a) = filters.age_group {
+            params.push(("age_group".into(), a.clone()));
+        }
+        if let Some(m) = filters.min_age {
+            params.push(("min_age".into(), m.to_string()));
+        }
+        if let Some(m) = filters.max_age {
+            params.push(("max_age".into(), m.to_string()));
+        }
+        if let Some(p) = filters.min_gender_probability {
+            params.push(("min_gender_probability".into(), p.to_string()));
+        }
+        if let Some(p) = filters.min_country_probability {
+            params.push(("min_country_probability".into(), p.to_string()));
+        }
+        params.push(("sort_by".into(), sort_by.as_str().into()));
+        params.push(("order".into(), order.as_str().into()));
+        params
+    };
+
     let (profiles, total) = state
         .profile_repo
         .find_paginated(filters, sort_by, order, page, limit)
@@ -177,6 +206,7 @@ pub async fn list_profiles(
         page,
         limit,
         total,
+        &extra_params,
         data,
     )))
 }
@@ -235,6 +265,7 @@ pub async fn search_profiles(
 ) -> Result<impl IntoResponse> {
     let Query(query) =
         query.map_err(|_| AppError::UnprocessableEntity("Invalid query parameters".into()))?;
+
     let q = query
         .q
         .ok_or_else(|| AppError::BadRequest("Missing or empty parameter".into()))?;
@@ -256,6 +287,12 @@ pub async fn search_profiles(
         .order
         .unwrap_or(parsed_search_query.order.unwrap_or_default());
 
+    let extra_params = vec![
+        ("q".into(), q.clone()),
+        ("sort_by".into(), sort_by.as_str().into()),
+        ("order".into(), order.as_str().into()),
+    ];
+
     let (profiles, total) = state
         .profile_repo
         .find_paginated(filters, sort_by, order, page, limit)
@@ -268,6 +305,7 @@ pub async fn search_profiles(
         page,
         limit,
         total,
+        &extra_params,
         data,
     )))
 }
