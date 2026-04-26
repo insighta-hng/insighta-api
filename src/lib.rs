@@ -1,9 +1,10 @@
 use dashmap::DashMap;
 
-use crate::middleware::rate_limit::RateLimitStore;
+use crate::{config::AppConfig, middleware::rate_limit::RateLimitStore};
 
 pub mod auth;
 pub mod client;
+pub mod config;
 pub mod countries;
 pub mod errors;
 pub mod handlers;
@@ -19,6 +20,7 @@ pub struct RequestId(pub String);
 
 #[derive(Clone, Debug)]
 pub struct AppState {
+    pub config: AppConfig,
     pub client: crate::client::ReqwestClient,
     pub profile_repo: crate::repo::profile::ProfileRepo,
     pub user_repo: crate::repo::user::UserRepo,
@@ -37,7 +39,10 @@ pub fn create_app(state: AppState) -> axum::Router {
 
     let auth_rate_store = state.auth_rate_limit.clone();
     let api_rate_store = state.api_rate_limit.clone();
-    let user_repo = state.user_repo.clone();
+    let auth_middleware_state = models::auth::AuthMiddlewareState {
+        user_repo: state.user_repo.clone(),
+        jwt_secret: state.config.jwt_secret.clone(),
+    };
 
     let auth_router = axum::Router::new()
         .route(
@@ -82,7 +87,7 @@ pub fn create_app(state: AppState) -> axum::Router {
             middleware::rate_limit::api_rate_limit,
         ))
         .layer(axum::middleware::from_fn_with_state(
-            user_repo,
+            auth_middleware_state,
             middleware::auth::require_auth,
         ))
         .layer(axum::middleware::from_fn(

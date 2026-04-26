@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::models::user::Role;
+use crate::{models::user::Role, repo::user::UserRepo};
 
 #[derive(Debug, Deserialize)]
 pub struct AuthInitQuery {
@@ -58,4 +58,10 @@ pub struct EmailEntry {
 pub struct AuthenticatedUser {
     pub id: uuid::Uuid,
     pub role: Role,
+}
+
+#[derive(Clone, Debug)]
+pub struct AuthMiddlewareState {
+    pub user_repo: UserRepo,
+    pub jwt_secret: String,
 }

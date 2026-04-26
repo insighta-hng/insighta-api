@@ -4,6 +4,7 @@ use dashmap::DashMap;
 use insighta_api::{
     AppState,
     client::ReqwestClient,
+    config::AppConfig,
     create_app,
     errors::{AppError, Result},
     middleware::rate_limit::RateLimitStore,
@@ -18,12 +19,12 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 async fn main() -> Result<()> {
     dotenvy::dotenv().ok();
     initialize_tracing()?;
+
+    let config = AppConfig::from_env()?;
+
     let reqwest_client = ReqwestClient::init()?;
 
-    let mongo_uri =
-        std::env::var("DATABASE_URL").unwrap_or_else(|_| "mongodb://localhost:27017".into());
-
-    let mut client_options = ClientOptions::parse(&mongo_uri)
+    let mut client_options = ClientOptions::parse(&config.database_url)
         .await
         .map_err(|e| AppError::ServiceUnavailable(format!("Failed to parse MongoDB URI: {}", e)))?;
 
@@ -42,8 +43,7 @@ async fn main() -> Result<()> {
 
     tracing::info!("Successfully connected to MongoDB Atlas");
 
-    let db_name = std::env::var("DATABASE_NAME").unwrap_or_else(|_| "stage2".to_string());
-    let db = mongo_client.database(&db_name);
+    let db = mongo_client.database(&config.database_name);
 
     let profile_repo = repo::profile::ProfileRepo::new(&db);
     profile_repo.create_indexes().await?;
@@ -57,6 +57,7 @@ async fn main() -> Result<()> {
     tokio::spawn(seeder::run(profile_repo.clone()));
 
     let state = AppState {
+        config,
         client: reqwest_client,
         profile_repo,
         user_repo,

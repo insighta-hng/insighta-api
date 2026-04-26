@@ -50,12 +50,9 @@ pub async fn github_init(
     let Query(query) =
         query.map_err(|_| AppError::UnprocessableEntity("Invalid query parameters".to_string()))?;
 
-    let client_id = std::env::var("GITHUB_CLIENT_ID")
-        .map_err(|_| AppError::InternalServerError("GITHUB_CLIENT_ID not set".to_string()))?;
-
     let redirect_uri = match query.redirect_uri {
         Some(ref uri) => uri.clone(),
-        None => std::env::var("GITHUB_REDIRECT_URI").map_err(|_| {
+        None => state.config.github_redirect_uri.clone().ok_or_else(|| {
             AppError::InternalServerError("GITHUB_REDIRECT_URI not set".to_string())
         })?,
     };
@@ -67,7 +64,7 @@ pub async fn github_init(
 
     let mut url = format!(
         "https://github.com/login/oauth/authorize?client_id={}&state={}&scope=user:email&redirect_uri={}",
-        client_id, query.state, redirect_uri
+        state.config.github_client_id, query.state, redirect_uri
     );
 
     // PKCE: tell GitHub which challenge to expect so it enforces the verifier at exchange time.
@@ -132,16 +129,9 @@ pub async fn github_callback(
         None => None,
     };
 
-    let client_id = std::env::var("GITHUB_CLIENT_ID")
-        .map_err(|_| AppError::InternalServerError("GITHUB_CLIENT_ID not set".to_string()))?;
-    let client_secret = std::env::var("GITHUB_CLIENT_SECRET")
-        .map_err(|_| AppError::InternalServerError("GITHUB_CLIENT_SECRET not set".to_string()))?;
-    let jwt_secret = std::env::var("JWT_SECRET")
-        .map_err(|_| AppError::InternalServerError("JWT_SECRET not set".to_string()))?;
-
     let mut form_params: Vec<(&str, &str)> = vec![
-        ("client_id", client_id.as_str()),
-        ("client_secret", client_secret.as_str()),
+        ("client_id", state.config.github_client_id.as_str()),
+        ("client_secret", state.config.github_client_secret.as_str()),
         ("code", query.code.as_str()),
         ("redirect_uri", redirect_uri.as_str()),
     ];
@@ -208,7 +198,12 @@ pub async fn github_callback(
         ));
     }
 
-    let access_token = issue_access_token(user.id, &user.role, &user.username, &jwt_secret)?;
+    let access_token = issue_access_token(
+        user.id,
+        &user.role,
+        &user.username,
+        &state.config.jwt_secret,
+    )?;
     let refresh_token = issue_refresh_token(user.id, &state.refresh_token_repo).await?;
 
     Ok((
@@ -248,9 +243,6 @@ pub async fn refresh(
 ) -> Result<impl IntoResponse> {
     let Json(body) = payload.map_err(|e| AppError::BadRequest(e.body_text()))?;
 
-    let jwt_secret = std::env::var("JWT_SECRET")
-        .map_err(|_| AppError::InternalServerError("JWT_SECRET not set".to_string()))?;
-
     let record = state
         .refresh_token_repo
         .consume(&body.refresh_token)
@@ -269,7 +261,12 @@ pub async fn refresh(
         ));
     }
 
-    let access_token = issue_access_token(user.id, &user.role, &user.username, &jwt_secret)?;
+    let access_token = issue_access_token(
+        user.id,
+        &user.role,
+        &user.username,
+        &state.config.jwt_secret,
+    )?;
     let refresh_token = issue_refresh_token(user.id, &state.refresh_token_repo).await?;
 
     Ok(Json(TokenResponse {

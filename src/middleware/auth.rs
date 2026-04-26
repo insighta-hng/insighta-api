@@ -5,23 +5,17 @@ use axum::{
 };
 
 use crate::{
-    auth::tokens::validate_access_token, errors::AppError, models::auth::AuthenticatedUser,
-    repo::user::UserRepo, utils::extract_bearer_token,
+    auth::tokens::validate_access_token,
+    errors::AppError,
+    models::auth::{AuthMiddlewareState, AuthenticatedUser},
+    utils::extract_bearer_token,
 };
 
 pub async fn require_auth(
-    State(user_repo): State<UserRepo>,
+    State(auth_state): State<AuthMiddlewareState>,
     mut req: Request,
     next: Next,
 ) -> Response {
-    let jwt_secret = match std::env::var("JWT_SECRET") {
-        Ok(secret) => secret,
-        Err(_) => {
-            return AppError::InternalServerError("Server misconfiguration".to_string())
-                .into_response();
-        }
-    };
-
     let token = match extract_bearer_token(&req) {
         Some(val) => val,
         None => {
@@ -30,7 +24,7 @@ pub async fn require_auth(
         }
     };
 
-    let claims = match validate_access_token(&token, &jwt_secret) {
+    let claims = match validate_access_token(&token, &auth_state.jwt_secret) {
         Ok(val) => val,
         Err(AppError::Unauthorized(msg)) => {
             return AppError::Unauthorized(msg).into_response();
@@ -47,7 +41,7 @@ pub async fn require_auth(
         }
     };
 
-    let user = match user_repo.find_by_id(user_id).await {
+    let user = match auth_state.user_repo.find_by_id(user_id).await {
         Ok(Some(u)) => u,
         Ok(None) => {
             return AppError::Unauthorized("User no longer exists".to_string()).into_response();
