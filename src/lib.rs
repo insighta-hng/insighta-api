@@ -1,5 +1,7 @@
 use dashmap::DashMap;
 
+use crate::middleware::rate_limit::RateLimitStore;
+
 pub mod auth;
 pub mod client;
 pub mod countries;
@@ -22,6 +24,8 @@ pub struct AppState {
     pub user_repo: crate::repo::user::UserRepo,
     pub refresh_token_repo: crate::repo::refresh_token::RefreshTokenRepo,
     pub oauth_states: std::sync::Arc<DashMap<String, String>>,
+    pub auth_rate_limit: RateLimitStore,
+    pub api_rate_limit: RateLimitStore,
 }
 
 pub fn create_app(state: AppState) -> axum::Router {
@@ -29,6 +33,9 @@ pub fn create_app(state: AppState) -> axum::Router {
         .allow_origin(tower_http::cors::Any)
         .allow_methods(tower_http::cors::Any)
         .allow_headers(tower_http::cors::Any);
+
+    let auth_rate_store = state.auth_rate_limit.clone();
+    let api_rate_store = state.api_rate_limit.clone();
 
     let auth_router = axum::Router::new()
         .route(
@@ -43,7 +50,11 @@ pub fn create_app(state: AppState) -> axum::Router {
             "/auth/refresh",
             axum::routing::post(handlers::auth::refresh),
         )
-        .route("/auth/logout", axum::routing::post(handlers::auth::logout));
+        .route("/auth/logout", axum::routing::post(handlers::auth::logout))
+        .layer(axum::middleware::from_fn_with_state(
+            auth_rate_store,
+            middleware::rate_limit::auth_rate_limit,
+        ));
 
     let api_router = axum::Router::new()
         .route(
@@ -64,6 +75,10 @@ pub fn create_app(state: AppState) -> axum::Router {
             axum::routing::get(handlers::profile::get_profile)
                 .delete(handlers::profile::delete_profile),
         )
+        .layer(axum::middleware::from_fn_with_state(
+            api_rate_store,
+            middleware::rate_limit::api_rate_limit,
+        ))
         .layer(axum::middleware::from_fn(middleware::auth::require_auth))
         .layer(axum::middleware::from_fn(
             middleware::api_version::require_api_version,

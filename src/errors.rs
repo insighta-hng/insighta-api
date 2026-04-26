@@ -47,6 +47,9 @@ pub enum AppError {
     /// Authenticated but not permitted to perform this action.
     #[error("{0}")]
     Forbidden(String),
+    /// Rate limit exceeded for this client.
+    #[error("{0}")]
+    TooManyRequests(String),
 }
 
 impl AppError {
@@ -58,6 +61,7 @@ impl AppError {
             AppError::Forbidden(_) => 403,
             AppError::NotFound(_) => 404,
             AppError::UnprocessableEntity(_) => 422,
+            AppError::TooManyRequests(_) => 429,
             AppError::IoError(_) | AppError::TryInitError(_) | AppError::InternalServerError(_) => {
                 500
             }
@@ -91,7 +95,8 @@ impl AppError {
                 | AppError::UnprocessableEntity(msg)
                 | AppError::NotFound(msg)
                 | AppError::Unauthorized(msg)
-                | AppError::Forbidden(msg) => msg.to_string(),
+                | AppError::Forbidden(msg)
+                | AppError::TooManyRequests(msg) => msg.to_string(),
             },
             status: "error".to_string(),
         }

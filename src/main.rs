@@ -6,6 +6,7 @@ use insighta_api::{
     client::ReqwestClient,
     create_app,
     errors::{AppError, Result},
+    middleware::rate_limit::RateLimitStore,
     repo, seeder,
 };
 use mongodb::bson::doc;
@@ -61,6 +62,8 @@ async fn main() -> Result<()> {
         user_repo,
         refresh_token_repo,
         oauth_states: Arc::new(DashMap::new()),
+        auth_rate_limit: RateLimitStore::new(),
+        api_rate_limit: RateLimitStore::new(),
     };
 
     let app = create_app(state);

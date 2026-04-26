@@ -272,6 +272,29 @@ pub async fn search_profiles(
     )))
 }
 
+/// Exports profiles as a downloadable CSV file, with optional filtering and sorting.
+///
+/// Accepts the same filter and sort query parameters as `list_profiles` but returns
+/// all matching profiles (unpaginated) as a CSV attachment. The `format=csv` query
+/// parameter is required to prevent accidental unformatted responses.
+///
+/// # Arguments
+///
+/// * `state` - The application state containing the database repository.
+/// * `_auth` - Extractor that enforces authentication (user is not directly used).
+/// * `query` - Query parameters for filtering (`gender`, `age_group`, `country_id`, etc.),
+///   sorting (`sort_by`, `order`), and the mandatory `format=csv` flag.
+///
+/// # Returns
+///
+/// Returns `200 OK` with a `text/csv` body and a `Content-Disposition: attachment`
+/// header containing a timestamped filename (e.g. `profiles_20240101T120000Z.csv`).
+///
+/// # Errors
+///
+/// Returns `AppError::UnprocessableEntity` if query parameters are structurally invalid.
+/// Returns `AppError::BadRequest` if the `format` parameter is missing or not `"csv"`.
+/// Returns `AppError::InternalServerError` if CSV serialization or header construction fails.
 pub async fn export_profiles_to_csv(
     State(state): State<AppState>,
     _auth: RequireAny,
