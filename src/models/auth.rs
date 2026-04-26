@@ -4,7 +4,9 @@ use crate::models::user::Role;
 
 #[derive(Debug, Deserialize)]
 pub struct AuthInitQuery {
-    pub code_challenge: String,
+    /// PKCE code challenge (base64url SHA-256 of the verifier).
+    /// Present for CLI flows; omitted for web flows.
+    pub code_challenge: Option<String>,
     /// Random opaque string to prevent CSRF during the OAuth roundtrip.
     pub state: String,
     pub redirect_uri: Option<String>,
@@ -31,7 +33,10 @@ pub struct TokenResponse {
 
 #[derive(Debug, Deserialize)]
 pub struct GithubTokenResponse {
-    pub access_token: String,
+    pub access_token: Option<String>,
+    /// Set by GitHub when the exchange fails (e.g. bad code, PKCE mismatch).
+    pub error: Option<String>,
+    pub error_description: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

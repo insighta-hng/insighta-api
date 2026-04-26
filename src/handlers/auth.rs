@@ -60,16 +60,23 @@ pub async fn github_init(
         })?,
     };
 
-    // Store state → code_challenge mapping for callback validation.
     state.oauth_states.insert(
         query.state.clone(),
-        (query.code_challenge, redirect_uri.clone()),
+        (query.code_challenge.clone(), redirect_uri.clone()),
     );
 
-    let url = format!(
+    let mut url = format!(
         "https://github.com/login/oauth/authorize?client_id={}&state={}&scope=user:email&redirect_uri={}",
         client_id, query.state, redirect_uri
     );
+
+    // PKCE: tell GitHub which challenge to expect so it enforces the verifier at exchange time.
+    if let Some(ref challenge) = query.code_challenge {
+        url.push_str(&format!(
+            "&code_challenge={}&code_challenge_method=S256",
+            challenge
+        ));
+    }
 
     Ok(Redirect::to(&url).into_response())
 }
@@ -108,14 +115,22 @@ pub async fn github_callback(
     let (code_challenge, redirect_uri) = state
         .oauth_states
         .remove(&query.state)
-        .map(|(_, v)| v)
+        .map(|(_, val)| val)
         .ok_or_else(|| AppError::BadRequest("Invalid or expired OAuth state".to_string()))?;
 
-    if let Some(ref verifier) = query.code_verifier {
-        if !verify_code_challenge(verifier, &code_challenge) {
-            return Err(AppError::BadRequest("PKCE verification failed".to_string()));
+    // For PKCE flows: verify application-side and capture the verifier to forward to GitHub.
+    let code_verifier: Option<String> = match &code_challenge {
+        Some(challenge) => {
+            let verifier = query.code_verifier.as_ref().ok_or_else(|| {
+                AppError::BadRequest("code_verifier required for PKCE flow".to_string())
+            })?;
+            if !verify_code_challenge(verifier, challenge) {
+                return Err(AppError::BadRequest("PKCE verification failed".to_string()));
+            }
+            Some(verifier.clone())
         }
-    }
+        None => None,
+    };
 
     let client_id = std::env::var("GITHUB_CLIENT_ID")
         .map_err(|_| AppError::InternalServerError("GITHUB_CLIENT_ID not set".to_string()))?;
@@ -124,17 +139,23 @@ pub async fn github_callback(
     let jwt_secret = std::env::var("JWT_SECRET")
         .map_err(|_| AppError::InternalServerError("JWT_SECRET not set".to_string()))?;
 
+    let mut form_params: Vec<(&str, &str)> = vec![
+        ("client_id", client_id.as_str()),
+        ("client_secret", client_secret.as_str()),
+        ("code", query.code.as_str()),
+        ("redirect_uri", redirect_uri.as_str()),
+    ];
+
+    if let Some(ref val) = code_verifier {
+        form_params.push(("code_verifier", val.as_str()));
+    }
+
     let token_res: GithubTokenResponse = state
         .client
         .get()
         .post("https://github.com/login/oauth/access_token")
         .header("Accept", "application/json")
-        .form(&[
-            ("client_id", client_id.as_str()),
-            ("client_secret", client_secret.as_str()),
-            ("code", query.code.as_str()),
-            ("redirect_uri", redirect_uri.as_str()),
-        ])
+        .form(&form_params)
         .send()
         .await
         .map_err(|e| AppError::ServiceUnavailable(e.to_string()))?
@@ -144,14 +165,19 @@ pub async fn github_callback(
             AppError::UpstreamInvalidResponse("GitHub token exchange failed".to_string())
         })?;
 
+    let github_token = token_res.access_token.ok_or_else(|| {
+        let msg = token_res
+            .error_description
+            .or(token_res.error)
+            .unwrap_or_else(|| "GitHub token exchange failed".to_string());
+        AppError::BadRequest(msg)
+    })?;
+
     let github_user: GithubUser = state
         .client
         .get()
         .get("https://api.github.com/user")
-        .header(
-            "Authorization",
-            format!("Bearer {}", token_res.access_token),
-        )
+        .header("Authorization", format!("Bearer {}", github_token))
         .header("User-Agent", "insighta-api")
         .send()
         .await
@@ -164,7 +190,7 @@ pub async fn github_callback(
 
     let email = match github_user.email {
         Some(e) => e,
-        None => fetch_github_primary_email(&state, &token_res.access_token).await?,
+        None => fetch_github_primary_email(&state, &github_token).await?,
     };
 
     let info = GithubUserInfo {
