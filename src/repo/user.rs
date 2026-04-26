@@ -4,7 +4,8 @@ use uuid::Uuid;
 
 use crate::{
     errors::{AppError, Result},
-    models::user::{GithubUserInfo, Role, User},
+    models::user::{GithubUserInfo, User},
+    utils::resolve_role,
 };
 
 #[derive(Clone, Debug)]
@@ -74,7 +75,7 @@ impl UserRepo {
                     .await
                     .map_err(|e| AppError::ServiceUnavailable(format!("DB Update Error: {}", e)))?;
 
-                // Return the updated user. Re-fetch to get the persisted state.
+                // Re-fetch to return the current persisted state.
                 self.find_by_github_id(&info.github_id)
                     .await?
                     .ok_or_else(|| {
@@ -88,7 +89,7 @@ impl UserRepo {
                     username: info.username.clone(),
                     email: info.email.clone(),
                     avatar_url: info.avatar_url.clone(),
-                    role: Role::default(),
+                    role: resolve_role(&info.github_id),
                     is_active: true,
                     last_login_at: now,
                     created_at: now,
