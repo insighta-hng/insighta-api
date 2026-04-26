@@ -173,7 +173,7 @@ pub async fn github_callback(
         ));
     }
 
-    let access_token = issue_access_token(user.id, &user.role, &jwt_secret)?;
+    let access_token = issue_access_token(user.id, &user.role, &user.username, &jwt_secret)?;
     let refresh_token = issue_refresh_token(user.id, &state.refresh_token_repo).await?;
 
     Ok((
@@ -234,7 +234,7 @@ pub async fn refresh(
         ));
     }
 
-    let access_token = issue_access_token(user.id, &user.role, &jwt_secret)?;
+    let access_token = issue_access_token(user.id, &user.role, &user.username, &jwt_secret)?;
     let refresh_token = issue_refresh_token(user.id, &state.refresh_token_repo).await?;
 
     Ok(Json(TokenResponse {

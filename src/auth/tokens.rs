@@ -18,15 +18,22 @@ const REFRESH_TOKEN_EXPIRY_SECS: i64 = 300; // 5-minutes
 pub struct Claims {
     pub sub: String,
     pub role: Role,
+    pub username: String,
     pub exp: i64,
     pub iat: i64,
 }
 
-pub fn issue_access_token(user_id: Uuid, role: &Role, secret: &str) -> Result<String> {
+pub fn issue_access_token(
+    user_id: Uuid,
+    role: &Role,
+    username: &str,
+    secret: &str,
+) -> Result<String> {
     let now = Utc::now().timestamp();
     let claims = Claims {
         sub: user_id.to_string(),
         role: role.clone(),
+        username: username.to_string(),
         exp: now + ACCESS_TOKEN_EXPIRY_SECS,
         iat: now,
     };

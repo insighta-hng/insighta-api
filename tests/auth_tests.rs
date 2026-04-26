@@ -37,9 +37,10 @@ fn test_pkce_tampered_challenge() {
 fn test_access_token_roundtrip() {
     let secret = "test-secret-that-is-long-enough-32ch";
     let user_id = Uuid::now_v7();
+    let username = "";
     let role = Role::Analyst;
 
-    let token = issue_access_token(user_id, &role, secret).unwrap();
+    let token = issue_access_token(user_id, &role, username, secret).unwrap();
     let claims = validate_access_token(&token, secret).unwrap();
 
     assert_eq!(claims.sub, user_id.to_string());
@@ -49,8 +50,14 @@ fn test_access_token_roundtrip() {
 #[test]
 fn test_access_token_wrong_secret() {
     let user_id = Uuid::now_v7();
-    let token =
-        issue_access_token(user_id, &Role::Admin, "secret-a-long-enough-string-here").unwrap();
+    let username = "";
+    let token = issue_access_token(
+        user_id,
+        &Role::Admin,
+        username,
+        "secret-a-long-enough-string-here",
+    )
+    .unwrap();
     let result = validate_access_token(&token, "wrong-secret-long-enough-string-here");
 
     assert!(result.is_err());
@@ -60,8 +67,9 @@ fn test_access_token_wrong_secret() {
 fn test_admin_role_preserved_in_token() {
     let secret = "test-secret-that-is-long-enough-32ch";
     let user_id = Uuid::now_v7();
+    let username = "";
 
-    let token = issue_access_token(user_id, &Role::Admin, secret).unwrap();
+    let token = issue_access_token(user_id, &Role::Admin, username, secret).unwrap();
     let claims = validate_access_token(&token, secret).unwrap();
 
     assert_eq!(claims.role, Role::Admin);
