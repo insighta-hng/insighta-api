@@ -37,6 +37,7 @@ pub fn create_app(state: AppState) -> axum::Router {
 
     let auth_rate_store = state.auth_rate_limit.clone();
     let api_rate_store = state.api_rate_limit.clone();
+    let user_repo = state.user_repo.clone();
 
     let auth_router = axum::Router::new()
         .route(
@@ -80,7 +81,10 @@ pub fn create_app(state: AppState) -> axum::Router {
             api_rate_store,
             middleware::rate_limit::api_rate_limit,
         ))
-        .layer(axum::middleware::from_fn(middleware::auth::require_auth))
+        .layer(axum::middleware::from_fn_with_state(
+            user_repo,
+            middleware::auth::require_auth,
+        ))
         .layer(axum::middleware::from_fn(
             middleware::api_version::require_api_version,
         ));

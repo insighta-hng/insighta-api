@@ -1,15 +1,19 @@
 use axum::{
-    extract::Request,
+    extract::{Request, State},
     middleware::Next,
     response::{IntoResponse, Response},
 };
 
 use crate::{
     auth::tokens::validate_access_token, errors::AppError, models::auth::AuthenticatedUser,
-    utils::extract_bearer_token,
+    repo::user::UserRepo, utils::extract_bearer_token,
 };
 
-pub async fn require_auth(mut req: Request, next: Next) -> Response {
+pub async fn require_auth(
+    State(user_repo): State<UserRepo>,
+    mut req: Request,
+    next: Next,
+) -> Response {
     let jwt_secret = match std::env::var("JWT_SECRET") {
         Ok(secret) => secret,
         Err(_) => {
@@ -43,9 +47,25 @@ pub async fn require_auth(mut req: Request, next: Next) -> Response {
         }
     };
 
+    let user = match user_repo.find_by_id(user_id).await {
+        Ok(Some(u)) => u,
+        Ok(None) => {
+            return AppError::Unauthorized("User no longer exists".to_string()).into_response();
+        }
+        Err(_) => {
+            return AppError::InternalServerError("Authentication check failed".to_string())
+                .into_response();
+        }
+    };
+
+    if !user.is_active {
+        return AppError::Forbidden("Your account has been deactivated".to_string())
+            .into_response();
+    }
+
     req.extensions_mut().insert(AuthenticatedUser {
         id: user_id,
-        role: claims.role,
+        role: user.role,
     });
 
     next.run(req).await
