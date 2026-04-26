@@ -47,19 +47,17 @@ pub fn parse_query(search_query: &str) -> Result<(ProfileFilters, SearchQuery)> 
         let token = tokens[idx];
 
         match token {
-            "in" | "from" => {
-                if idx + 1 < tokens.len() && !is_parsed_country {
-                    let remaining = tokens.len() - idx - 1;
-                    let max_window = remaining.min(7);
+            "in" | "from" if idx + 1 < tokens.len() && !is_parsed_country => {
+                let remaining = tokens.len() - idx - 1;
+                let max_window = remaining.min(7);
 
-                    for window in (1..=max_window).rev() {
-                        let candidate = tokens[idx + 1..=idx + window].join(" ");
-                        if let Some(&code) = COUNTRIES_LOWER.get(candidate.as_str()) {
-                            filters.country_id = Some(code.to_string());
-                            is_parsed_country = true;
-                            is_value_parsed = true;
-                            break;
-                        }
+                for window in (1..=max_window).rev() {
+                    let candidate = tokens[idx + 1..=idx + window].join(" ");
+                    if let Some(&code) = COUNTRIES_LOWER.get(candidate.as_str()) {
+                        filters.country_id = Some(code.to_string());
+                        is_parsed_country = true;
+                        is_value_parsed = true;
+                        break;
                     }
                 }
             }

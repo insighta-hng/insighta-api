@@ -70,6 +70,12 @@ impl RateLimitStore {
     }
 }
 
+impl Default for RateLimitStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub async fn auth_rate_limit(
     axum::extract::State(store): axum::extract::State<RateLimitStore>,
     req: Request,

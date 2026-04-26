@@ -2,17 +2,12 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum Role {
     Admin,
+    #[default]
     Analyst,
-}
-
-impl Default for Role {
-    fn default() -> Self {
-        Role::Analyst
-    }
 }
 
 impl std::fmt::Display for Role {

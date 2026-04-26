@@ -281,20 +281,20 @@ impl ProfileRepo {
         {
             Ok(result) => Ok(result.inserted_ids.len() as u64),
             Err(e) => {
-                if let ErrorKind::InsertMany(ref insert_many_err) = *e.kind {
-                    if let Some(ref write_errors) = insert_many_err.write_errors {
-                        let all_dup_key = write_errors.iter().all(|err| err.code == 11000);
-                        if all_dup_key {
-                            let inserted = total - write_errors.len() as u64;
-                            return Ok(inserted);
-                        } else {
-                            let non_dup_count =
-                                write_errors.iter().filter(|err| err.code != 11000).count();
-                            return Err(AppError::ServiceUnavailable(format!(
-                                "DB Bulk Insert partially failed: {} non-duplicate errors occurred",
-                                non_dup_count
-                            )));
-                        }
+                if let ErrorKind::InsertMany(ref insert_many_err) = *e.kind
+                    && let Some(ref write_errors) = insert_many_err.write_errors
+                {
+                    let all_dup_key = write_errors.iter().all(|err| err.code == 11000);
+                    if all_dup_key {
+                        let inserted = total - write_errors.len() as u64;
+                        return Ok(inserted);
+                    } else {
+                        let non_dup_count =
+                            write_errors.iter().filter(|err| err.code != 11000).count();
+                        return Err(AppError::ServiceUnavailable(format!(
+                            "DB Bulk Insert partially failed: {} non-duplicate errors occurred",
+                            non_dup_count
+                        )));
                     }
                 }
                 Err(AppError::ServiceUnavailable(format!(
