@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::models::user::Role;
+
 #[derive(Debug, Deserialize)]
 pub struct AuthInitQuery {
     pub code_challenge: String,
@@ -44,4 +46,10 @@ pub struct EmailEntry {
     pub email: String,
     pub primary: bool,
     pub verified: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct AuthenticatedUser {
+    pub id: uuid::Uuid,
+    pub role: Role,
 }

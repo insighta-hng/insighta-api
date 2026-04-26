@@ -1,6 +1,7 @@
 use crate::{
     AppState,
     errors::{AppError, Result},
+    middleware::role::{RequireAdmin, RequireAny},
     models::profile::{
         CreateProfileRequest, ProfileDto, ProfileListResponse, ProfileQuery, ProfileResponse,
         SearchQuery,
@@ -39,6 +40,7 @@ use uuid::Uuid;
 /// Returns `AppError::BadGateway` if external APIs return unusable data.
 pub async fn create_profile(
     State(state): State<AppState>,
+    _auth: RequireAdmin,
     payload: std::result::Result<Json<CreateProfileRequest>, JsonRejection>,
 ) -> Result<impl IntoResponse> {
     let Json(payload) = payload.map_err(|e| AppError::BadRequest(e.body_text()))?;
@@ -107,6 +109,7 @@ pub async fn create_profile(
 /// Returns `AppError::NotFound` if no profile exists with the given ID.
 pub async fn get_profile(
     State(state): State<AppState>,
+    _auth: RequireAny,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse> {
     let uuid = Uuid::parse_str(&id)
@@ -141,6 +144,7 @@ pub async fn get_profile(
 /// Returns `AppError::UnprocessableEntity` if query parameters are structurally invalid.
 pub async fn list_profiles(
     State(state): State<AppState>,
+    _auth: RequireAny,
     query: std::result::Result<Query<ProfileQuery>, QueryRejection>,
 ) -> Result<impl IntoResponse> {
     let Query(query) =
@@ -192,6 +196,7 @@ pub async fn list_profiles(
 /// Returns `AppError::NotFound` if no profile matches the given ID.
 pub async fn delete_profile(
     State(state): State<AppState>,
+    _auth: RequireAdmin,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse> {
     let uuid = Uuid::parse_str(&id)
@@ -224,6 +229,7 @@ pub async fn delete_profile(
 /// Returns `AppError::BadRequest` if the query is missing or cannot be interpreted.
 pub async fn search_profiles(
     State(state): State<AppState>,
+    _auth: RequireAny,
     query: std::result::Result<Query<SearchQuery>, QueryRejection>,
 ) -> Result<impl IntoResponse> {
     let Query(query) =

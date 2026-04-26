@@ -45,8 +45,7 @@ pub fn create_app(state: AppState) -> axum::Router {
         )
         .route("/auth/logout", axum::routing::post(handlers::auth::logout));
 
-    axum::Router::new()
-        .merge(auth_router)
+    let api_router = axum::Router::new()
         .route(
             "/api/profiles",
             axum::routing::get(handlers::profile::list_profiles)
@@ -61,6 +60,11 @@ pub fn create_app(state: AppState) -> axum::Router {
             axum::routing::get(handlers::profile::get_profile)
                 .delete(handlers::profile::delete_profile),
         )
+        .layer(axum::middleware::from_fn(middleware::auth::require_auth));
+
+    axum::Router::new()
+        .merge(auth_router)
+        .merge(api_router)
         .layer(
             tower_http::trace::TraceLayer::new_for_http().make_span_with(
                 |request: &axum::http::Request<_>| {
@@ -81,7 +85,7 @@ pub fn create_app(state: AppState) -> axum::Router {
             ),
         )
         .layer(axum::middleware::from_fn(
-            crate::middleware::request_id::request_id,
+            middleware::request_id::request_id,
         ))
         .layer(cors)
         .with_state(state)

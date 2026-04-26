@@ -1,6 +1,9 @@
 use axum::{
     Json,
-    extract::{Query, State},
+    extract::{
+        Query, State,
+        rejection::{JsonRejection, QueryRejection},
+    },
     http::StatusCode,
     response::{IntoResponse, Redirect, Response},
 };
@@ -22,10 +25,31 @@ use crate::{
     utils::fetch_github_primary_email,
 };
 
+/// Initiates the GitHub OAuth 2.0 authorization flow.
+///
+/// Stores the `state` → `code_challenge` mapping in memory for PKCE validation
+/// at callback time, then redirects the user to GitHub's authorization page.
+///
+/// # Arguments
+///
+/// * `state` - The application state containing the in-memory OAuth state store.
+/// * `query` - Query parameters containing `state` (CSRF token) and `code_challenge` (PKCE).
+///
+/// # Returns
+///
+/// Returns a `302 Found` redirect to the GitHub authorization URL.
+///
+/// # Errors
+///
+/// Returns `AppError::UnprocessableEntity` if query parameters are structurally invalid.
+/// Returns `AppError::InternalServerError` if `GITHUB_CLIENT_ID` is not set.
 pub async fn github_init(
     State(state): State<AppState>,
-    Query(query): Query<AuthInitQuery>,
+    query: std::result::Result<Query<AuthInitQuery>, QueryRejection>,
 ) -> Result<Response> {
+    let Query(query) =
+        query.map_err(|_| AppError::UnprocessableEntity("Invalid query parameters".to_string()))?;
+
     let client_id = std::env::var("GITHUB_CLIENT_ID")
         .map_err(|_| AppError::InternalServerError("GITHUB_CLIENT_ID not set".to_string()))?;
 
@@ -42,10 +66,37 @@ pub async fn github_init(
     Ok(Redirect::to(&url).into_response())
 }
 
+/// Handles the GitHub OAuth callback and issues application tokens.
+///
+/// Validates the OAuth `state` parameter against the stored PKCE code challenge,
+/// exchanges the GitHub authorization code for an access token, fetches the
+/// authenticated user's profile and primary email, upserts the user record,
+/// and issues a new access/refresh token pair.
+///
+/// # Arguments
+///
+/// * `state` - The application state containing the HTTP client, OAuth state store, and repositories.
+/// * `query` - Query parameters containing `code`, `state`, and an optional `code_verifier`.
+///
+/// # Returns
+///
+/// Returns `200 OK` with a JSON body containing `access_token` and `refresh_token`.
+///
+/// # Errors
+///
+/// Returns `AppError::UnprocessableEntity` if query parameters are structurally invalid.
+/// Returns `AppError::BadRequest` if the OAuth state is invalid/expired or PKCE verification fails.
+/// Returns `AppError::InternalServerError` if required environment variables are not set.
+/// Returns `AppError::ServiceUnavailable` if GitHub's API is unreachable.
+/// Returns `AppError::UpstreamInvalidResponse` if GitHub returns unexpected data.
+/// Returns `AppError::Forbidden` if the user's account has been deactivated.
 pub async fn github_callback(
     State(state): State<AppState>,
-    Query(query): Query<CallbackQuery>,
+    query: std::result::Result<Query<CallbackQuery>, QueryRejection>,
 ) -> Result<impl IntoResponse> {
+    let Query(query) =
+        query.map_err(|_| AppError::UnprocessableEntity("Invalid query parameters".to_string()))?;
+
     let code_challenge = state
         .oauth_states
         .remove(&query.state)
@@ -135,10 +186,33 @@ pub async fn github_callback(
     ))
 }
 
+/// Rotates a refresh token and issues a fresh access/refresh token pair.
+///
+/// Consumes the provided refresh token (one-time use), validates the associated
+/// user, and issues new tokens. The old refresh token is invalidated regardless
+/// of whether the user account check passes.
+///
+/// # Arguments
+///
+/// * `state` - The application state containing the user and refresh token repositories.
+/// * `payload` - JSON body containing the `refresh_token` to consume.
+///
+/// # Returns
+///
+/// Returns `200 OK` with a JSON body containing a new `access_token` and `refresh_token`.
+///
+/// # Errors
+///
+/// Returns `AppError::BadRequest` if the request body is malformed or missing.
+/// Returns `AppError::InternalServerError` if `JWT_SECRET` is not set, or the user record is missing.
+/// Returns `AppError::Unauthorized` if the refresh token is not found or already consumed.
+/// Returns `AppError::Forbidden` if the user's account has been deactivated.
 pub async fn refresh(
     State(state): State<AppState>,
-    Json(body): Json<RefreshRequest>,
+    payload: std::result::Result<Json<RefreshRequest>, JsonRejection>,
 ) -> Result<impl IntoResponse> {
+    let Json(body) = payload.map_err(|e| AppError::BadRequest(e.body_text()))?;
+
     let jwt_secret = std::env::var("JWT_SECRET")
         .map_err(|_| AppError::InternalServerError("JWT_SECRET not set".to_string()))?;
 
@@ -170,10 +244,31 @@ pub async fn refresh(
     }))
 }
 
+/// Logs out the authenticated user by invalidating all their refresh tokens.
+///
+/// Consumes the provided refresh token to verify ownership, then deletes all
+/// remaining refresh tokens associated with that user, effectively terminating
+/// all active sessions.
+///
+/// # Arguments
+///
+/// * `state` - The application state containing the refresh token repository.
+/// * `payload` - JSON body containing the `refresh_token` to identify the session.
+///
+/// # Returns
+///
+/// Returns `204 No Content` on successful logout.
+///
+/// # Errors
+///
+/// Returns `AppError::BadRequest` if the request body is malformed or missing.
+/// Returns `AppError::Unauthorized` if the refresh token is not found or already consumed.
 pub async fn logout(
     State(state): State<AppState>,
-    Json(body): Json<RefreshRequest>,
+    payload: std::result::Result<Json<RefreshRequest>, JsonRejection>,
 ) -> Result<impl IntoResponse> {
+    let Json(body) = payload.map_err(|e| AppError::BadRequest(e.body_text()))?;
+
     let record = state
         .refresh_token_repo
         .consume(&body.refresh_token)

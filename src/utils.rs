@@ -1,3 +1,4 @@
+use axum::extract::Request;
 use serde_json::Value;
 
 use crate::{
@@ -138,4 +139,12 @@ pub async fn fetch_github_primary_email(state: &AppState, github_token: &str) ->
                 "No verified primary email on GitHub account".to_string(),
             )
         })
+}
+
+pub fn extract_bearer_token(req: &Request) -> Option<String> {
+    req.headers()
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|val| val.to_str().ok())
+        .and_then(|val| val.strip_prefix("Bearer "))
+        .map(|t| t.to_string())
 }
