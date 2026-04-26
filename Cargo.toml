@@ -26,6 +26,7 @@ rand = "0.10.1"
 base64 = "0.22.1"
 hex = "0.4.3"
 dashmap = "6.1.0"
+csv = "1.4.0"
 
 [[bin]]
 name = "insighta_api"

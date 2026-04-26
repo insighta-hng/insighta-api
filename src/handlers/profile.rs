@@ -17,8 +17,8 @@ use axum::{
         Path, Query, State,
         rejection::{JsonRejection, QueryRejection},
     },
-    http::StatusCode,
-    response::IntoResponse,
+    http::{StatusCode, header},
+    response::{AppendHeaders, IntoResponse},
 };
 use uuid::Uuid;
 
@@ -270,4 +270,95 @@ pub async fn search_profiles(
         total,
         data,
     )))
+}
+
+pub async fn export_profiles_to_csv(
+    State(state): State<AppState>,
+    _auth: RequireAny,
+    query: std::result::Result<Query<ProfileQuery>, QueryRejection>,
+) -> Result<impl IntoResponse> {
+    let Query(query) =
+        query.map_err(|_| AppError::UnprocessableEntity("Invalid query parameters".into()))?;
+
+    match query.format.as_deref() {
+        Some("csv") => {}
+        _ => {
+            return Err(AppError::BadRequest(
+                "format parameter must be 'csv'".into(),
+            ));
+        }
+    }
+
+    let filters = ProfileFilters {
+        gender: query.gender,
+        country_id: query.country_id,
+        age_group: query.age_group,
+        min_age: query.min_age,
+        max_age: query.max_age,
+        min_gender_probability: query.min_gender_probability,
+        min_country_probability: query.min_country_probability,
+    };
+
+    let sort_by = query.sort_by.unwrap_or_default();
+    let order = query.order.unwrap_or_default();
+
+    let profiles = state.profile_repo.find_all(filters, sort_by, order).await?;
+
+    let mut writer = csv::Writer::from_writer(vec![]);
+
+    // Header row — column order per TRD
+    writer
+        .write_record([
+            "id",
+            "name",
+            "gender",
+            "gender_probability",
+            "age",
+            "age_group",
+            "country_id",
+            "country_name",
+            "country_probability",
+            "created_at",
+        ])
+        .map_err(|e| AppError::InternalServerError(format!("CSV write error: {}", e)))?;
+
+    for profile in profiles {
+        writer
+            .write_record([
+                profile.id.to_string(),
+                profile.name,
+                profile.gender.to_string(),
+                profile.gender_probability.to_string(),
+                profile.age.to_string(),
+                profile.age_group,
+                profile.country_id,
+                profile.country_name,
+                profile.country_probability.to_string(),
+                profile
+                    .created_at
+                    .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+            ])
+            .map_err(|e| AppError::InternalServerError(format!("CSV write error: {}", e)))?;
+    }
+
+    let csv_bytes = writer
+        .into_inner()
+        .map_err(|e| AppError::InternalServerError(format!("CSV flush error: {}", e)))?;
+
+    let timestamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
+    let filename = format!("profiles_{}.csv", timestamp);
+
+    let content_disposition =
+        header::HeaderValue::from_str(&format!("attachment; filename=\"{}\"", filename))
+            .map_err(|e| AppError::InternalServerError(format!("Invalid header value: {}", e)))?;
+
+    let headers = AppendHeaders([
+        (
+            header::CONTENT_TYPE,
+            header::HeaderValue::from_static("text/csv"),
+        ),
+        (header::CONTENT_DISPOSITION, content_disposition),
+    ]);
+
+    Ok((headers, csv_bytes))
 }

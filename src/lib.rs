@@ -56,6 +56,10 @@ pub fn create_app(state: AppState) -> axum::Router {
             axum::routing::get(handlers::profile::search_profiles),
         )
         .route(
+            "/api/profiles/export",
+            axum::routing::get(handlers::profile::export_profiles_to_csv),
+        )
+        .route(
             "/api/profiles/{id}",
             axum::routing::get(handlers::profile::get_profile)
                 .delete(handlers::profile::delete_profile),

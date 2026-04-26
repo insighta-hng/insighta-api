@@ -109,6 +109,7 @@ pub struct ProfileQuery {
     pub order: Option<SortOrder>,
     pub page: Option<u32>,
     pub limit: Option<u32>,
+    pub format: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

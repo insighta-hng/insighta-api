@@ -154,6 +154,56 @@ impl ProfileRepo {
         Ok(result.deleted_count > 0)
     }
 
+    fn build_filter_doc(&self, filters: ProfileFilters) -> bson::Document {
+        let mut filter_doc = bson::doc! {};
+
+        if let Some(gender) = filters.gender {
+            filter_doc.insert("gender", gender.to_string());
+        }
+        if let Some(country) = filters.country_id {
+            filter_doc.insert("country_id", country.to_uppercase());
+        }
+        if let Some(age) = filters.age_group {
+            filter_doc.insert("age_group", age.to_lowercase());
+        }
+
+        let mut age_doc = bson::doc! {};
+        if let Some(min_age) = filters.min_age {
+            age_doc.insert("$gte", min_age as i32);
+        }
+        if let Some(max_age) = filters.max_age {
+            age_doc.insert("$lte", max_age as i32);
+        }
+        if !age_doc.is_empty() {
+            filter_doc.insert("age", age_doc);
+        }
+
+        if let Some(min_gender_prob) = filters.min_gender_probability {
+            filter_doc.insert("gender_probability", bson::doc! { "$gte": min_gender_prob });
+        }
+        if let Some(min_country_prob) = filters.min_country_probability {
+            filter_doc.insert(
+                "country_probability",
+                bson::doc! { "$gte": min_country_prob },
+            );
+        }
+
+        filter_doc
+    }
+
+    fn build_sort_doc(&self, sort_by: SortBy, order: SortOrder) -> bson::Document {
+        let sort_field = match sort_by {
+            SortBy::Age => "age",
+            SortBy::CreatedAt => "created_at",
+            SortBy::GenderProbability => "gender_probability",
+        };
+        let sort_direction = match order {
+            SortOrder::Asc => 1,
+            SortOrder::Desc => -1,
+        };
+        bson::doc! { sort_field: sort_direction }
+    }
+
     pub async fn find_paginated(
         &self,
         filters: ProfileFilters,
@@ -162,57 +212,8 @@ impl ProfileRepo {
         page: u32,
         limit: u32,
     ) -> Result<(Vec<Profile>, u64)> {
-        let mut filter_doc = bson::doc! {};
-
-        if let Some(gender) = filters.gender {
-            filter_doc.insert("gender", gender.to_string());
-        }
-
-        if let Some(country) = filters.country_id {
-            filter_doc.insert("country_id", country.to_uppercase());
-        }
-
-        if let Some(age) = filters.age_group {
-            filter_doc.insert("age_group", age.to_lowercase());
-        }
-
-        let mut age_doc = bson::doc! {};
-
-        if let Some(min_age) = filters.min_age {
-            age_doc.insert("$gte", min_age as i32);
-        }
-
-        if let Some(max_age) = filters.max_age {
-            age_doc.insert("$lte", max_age as i32);
-        }
-
-        if !age_doc.is_empty() {
-            filter_doc.insert("age", age_doc);
-        }
-
-        if let Some(min_gender_prob) = filters.min_gender_probability {
-            filter_doc.insert("gender_probability", bson::doc! { "$gte": min_gender_prob });
-        }
-
-        if let Some(min_country_prob) = filters.min_country_probability {
-            filter_doc.insert(
-                "country_probability",
-                bson::doc! { "$gte": min_country_prob },
-            );
-        }
-
-        let sort_field = match sort_by {
-            SortBy::Age => "age",
-            SortBy::CreatedAt => "created_at",
-            SortBy::GenderProbability => "gender_probability",
-        };
-
-        let sort_direction = match order {
-            SortOrder::Asc => 1,
-            SortOrder::Desc => -1,
-        };
-
-        let sort_doc = bson::doc! { sort_field: sort_direction };
+        let filter_doc = self.build_filter_doc(filters);
+        let sort_doc = self.build_sort_doc(sort_by, order);
         let skip = (page.saturating_sub(1)) * limit;
 
         let find_options = mongodb::options::FindOptions::builder()
@@ -302,5 +303,31 @@ impl ProfileRepo {
                 )))
             }
         }
+    }
+
+    pub async fn find_all(
+        &self,
+        filters: ProfileFilters,
+        sort_by: SortBy,
+        order: SortOrder,
+    ) -> Result<Vec<Profile>> {
+        let filter_doc = self.build_filter_doc(filters);
+        let sort_doc = self.build_sort_doc(sort_by, order);
+
+        let find_options = mongodb::options::FindOptions::builder()
+            .sort(sort_doc)
+            .build();
+
+        let cursor = self
+            .collection
+            .find(filter_doc)
+            .with_options(find_options)
+            .await
+            .map_err(|e| AppError::ServiceUnavailable(format!("DB Find Error: {}", e)))?;
+
+        cursor
+            .try_collect()
+            .await
+            .map_err(|e| AppError::ServiceUnavailable(format!("DB Cursor Error: {}", e)))
     }
 }
