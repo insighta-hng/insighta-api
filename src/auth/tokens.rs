@@ -9,6 +9,7 @@ use crate::{
     errors::{AppError, Result},
     models::user::Role,
     repo::refresh_token::{RefreshToken, RefreshTokenRepo},
+    utils::hash_token,
 };
 
 const ACCESS_TOKEN_EXPIRY_SECS: i64 = 180; // 3-minutes
@@ -72,7 +73,7 @@ pub async fn issue_refresh_token(user_id: Uuid, repo: &RefreshTokenRepo) -> Resu
     let expires_at = Utc::now() + chrono::Duration::seconds(REFRESH_TOKEN_EXPIRY_SECS);
 
     repo.insert(RefreshToken {
-        token: token.clone(),
+        token: hash_token(&token),
         user_id,
         expires_at,
     })

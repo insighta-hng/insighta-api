@@ -3,7 +3,10 @@ use mongodb::{Collection, Database, IndexModel, bson, options::IndexOptions};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::errors::{AppError, Result};
+use crate::{
+    errors::{AppError, Result},
+    utils::hash_token,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RefreshToken {
@@ -71,9 +74,11 @@ impl RefreshTokenRepo {
     }
 
     pub async fn consume(&self, token: &str) -> Result<Option<RefreshToken>> {
+        let token_hash = hash_token(token);
+
         let doc = self
             .collection
-            .find_one_and_delete(bson::doc! { "token": token })
+            .find_one_and_delete(bson::doc! { "token": &token_hash })
             .await
             .map_err(|e| AppError::ServiceUnavailable(format!("DB Delete Error: {}", e)))?;
 

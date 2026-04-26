@@ -1,5 +1,6 @@
 use axum::extract::Request;
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
 use crate::{
     AppState,
@@ -218,4 +219,8 @@ pub fn resolve_role(github_id: &str) -> Role {
     } else {
         Role::default()
     }
+}
+
+pub fn hash_token(token: &str) -> String {
+    hex::encode(Sha256::digest(token.as_bytes()))
 }
