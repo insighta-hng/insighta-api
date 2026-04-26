@@ -53,14 +53,22 @@ pub async fn github_init(
     let client_id = std::env::var("GITHUB_CLIENT_ID")
         .map_err(|_| AppError::InternalServerError("GITHUB_CLIENT_ID not set".to_string()))?;
 
+    let redirect_uri = match query.redirect_uri {
+        Some(ref uri) => uri.clone(),
+        None => std::env::var("GITHUB_REDIRECT_URI").map_err(|_| {
+            AppError::InternalServerError("GITHUB_REDIRECT_URI not set".to_string())
+        })?,
+    };
+
     // Store state → code_challenge mapping for callback validation.
-    state
-        .oauth_states
-        .insert(query.state.clone(), query.code_challenge);
+    state.oauth_states.insert(
+        query.state.clone(),
+        (query.code_challenge, redirect_uri.clone()),
+    );
 
     let url = format!(
-        "https://github.com/login/oauth/authorize?client_id={}&state={}&scope=user:email",
-        client_id, query.state
+        "https://github.com/login/oauth/authorize?client_id={}&state={}&scope=user:email&redirect_uri={}",
+        client_id, query.state, redirect_uri
     );
 
     Ok(Redirect::to(&url).into_response())
@@ -97,7 +105,7 @@ pub async fn github_callback(
     let Query(query) =
         query.map_err(|_| AppError::UnprocessableEntity("Invalid query parameters".to_string()))?;
 
-    let code_challenge = state
+    let (code_challenge, redirect_uri) = state
         .oauth_states
         .remove(&query.state)
         .map(|(_, v)| v)
@@ -125,6 +133,7 @@ pub async fn github_callback(
             ("client_id", client_id.as_str()),
             ("client_secret", client_secret.as_str()),
             ("code", query.code.as_str()),
+            ("redirect_uri", redirect_uri.as_str()),
         ])
         .send()
         .await
@@ -173,7 +182,7 @@ pub async fn github_callback(
         ));
     }
 
-    let access_token = issue_access_token(user.id, &user.role, &jwt_secret)?;
+    let access_token = issue_access_token(user.id, &user.role, &user.username, &jwt_secret)?;
     let refresh_token = issue_refresh_token(user.id, &state.refresh_token_repo).await?;
 
     Ok((
@@ -234,7 +243,7 @@ pub async fn refresh(
         ));
     }
 
-    let access_token = issue_access_token(user.id, &user.role, &jwt_secret)?;
+    let access_token = issue_access_token(user.id, &user.role, &user.username, &jwt_secret)?;
     let refresh_token = issue_refresh_token(user.id, &state.refresh_token_repo).await?;
 
     Ok(Json(TokenResponse {

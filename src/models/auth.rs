@@ -7,6 +7,7 @@ pub struct AuthInitQuery {
     pub code_challenge: String,
     /// Random opaque string to prevent CSRF during the OAuth roundtrip.
     pub state: String,
+    pub redirect_uri: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -23,7 +23,7 @@ pub struct AppState {
     pub profile_repo: crate::repo::profile::ProfileRepo,
     pub user_repo: crate::repo::user::UserRepo,
     pub refresh_token_repo: crate::repo::refresh_token::RefreshTokenRepo,
-    pub oauth_states: std::sync::Arc<DashMap<String, String>>,
+    pub oauth_states: std::sync::Arc<DashMap<String, (String, String)>>,
     pub auth_rate_limit: RateLimitStore,
     pub api_rate_limit: RateLimitStore,
 }
