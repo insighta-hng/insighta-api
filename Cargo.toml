@@ -20,7 +20,7 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter", "json"] }
 uuid = { version = "1.23.1", features = ["v7", "serde"] }
 bson = { version = "2.13.0", features = ["uuid-1", "chrono-0_4"] }
 lazy_static = "1.5.0"
-jsonwebtoken = "10.3.0"
+jsonwebtoken = { version = "10.3.0", features = ["rust_crypto"] }
 sha2 = "0.11.0"
 rand = "0.10.1"
 base64 = "0.22.1"
