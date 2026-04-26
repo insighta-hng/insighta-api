@@ -61,11 +61,21 @@ pub struct ProfileResponse {
 }
 
 #[derive(Debug, Serialize)]
+pub struct PaginationLinks {
+    #[serde(rename = "self")]
+    pub self_: String,
+    pub next: Option<String>,
+    pub prev: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
 pub struct ProfileListResponse {
     pub status: String,
     pub page: u32,
     pub limit: u32,
     pub total: u64,
+    pub total_pages: u64,
+    pub links: PaginationLinks,
     pub data: Vec<ProfileDto>,
 }
 

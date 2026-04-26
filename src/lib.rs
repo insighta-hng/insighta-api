@@ -60,7 +60,10 @@ pub fn create_app(state: AppState) -> axum::Router {
             axum::routing::get(handlers::profile::get_profile)
                 .delete(handlers::profile::delete_profile),
         )
-        .layer(axum::middleware::from_fn(middleware::auth::require_auth));
+        .layer(axum::middleware::from_fn(middleware::auth::require_auth))
+        .layer(axum::middleware::from_fn(
+            middleware::api_version::require_api_version,
+        ));
 
     axum::Router::new()
         .merge(auth_router)

@@ -6,7 +6,7 @@ use serde::Serialize;
 use thiserror::Error;
 
 #[derive(Debug, Serialize)]
-pub struct JsonError {
+pub(crate) struct JsonError {
     pub message: String,
     pub status: String,
 }
@@ -64,7 +64,7 @@ impl AppError {
         }
     }
 
-    pub fn to_json_error(&self) -> JsonError {
+    fn to_json_error(&self) -> JsonError {
         JsonError {
             message: match self {
                 AppError::ServiceUnavailable(msg) => {

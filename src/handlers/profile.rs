@@ -3,12 +3,13 @@ use crate::{
     errors::{AppError, Result},
     middleware::role::{RequireAdmin, RequireAny},
     models::profile::{
-        CreateProfileRequest, ProfileDto, ProfileListResponse, ProfileQuery, ProfileResponse,
-        SearchQuery,
+        CreateProfileRequest, ProfileDto, ProfileQuery, ProfileResponse, SearchQuery,
     },
     parser::parse_query,
     repo::profile::{Profile, ProfileFilters},
-    utils::{fetch_age_data, fetch_country_data, fetch_gender_data, validate_name},
+    utils::{
+        build_list_response, fetch_age_data, fetch_country_data, fetch_gender_data, validate_name,
+    },
 };
 use axum::{
     Json,
@@ -171,13 +172,13 @@ pub async fn list_profiles(
 
     let data: Vec<ProfileDto> = profiles.into_iter().map(Into::into).collect();
 
-    Ok(Json(ProfileListResponse {
-        status: "success".into(),
+    Ok(Json(build_list_response(
+        "/api/profiles",
         page,
         limit,
         total,
         data,
-    }))
+    )))
 }
 
 /// Deletes an existing profile by its UUID.
@@ -262,11 +263,11 @@ pub async fn search_profiles(
 
     let data: Vec<ProfileDto> = profiles.into_iter().map(Into::into).collect();
 
-    Ok(Json(ProfileListResponse {
-        status: "success".into(),
+    Ok(Json(build_list_response(
+        "/api/profiles/search",
         page,
         limit,
         total,
         data,
-    }))
+    )))
 }

@@ -11,6 +11,7 @@ use crate::{
         auth::EmailEntry,
         country::{NationalizeRawResponse, NationalizeResponse},
         gender::GenderizeResponse,
+        profile::{PaginationLinks, ProfileDto, ProfileListResponse},
     },
 };
 
@@ -147,4 +148,36 @@ pub fn extract_bearer_token(req: &Request) -> Option<String> {
         .and_then(|val| val.to_str().ok())
         .and_then(|val| val.strip_prefix("Bearer "))
         .map(|t| t.to_string())
+}
+
+pub fn build_list_response(
+    base_path: &str,
+    page: u32,
+    limit: u32,
+    total: u64,
+    data: Vec<ProfileDto>,
+) -> ProfileListResponse {
+    let total_pages = (total as f64 / limit as f64).ceil() as u64;
+
+    let self_ = format!("{}?page={}&limit={}", base_path, page, limit);
+    let next = if (page as u64) < total_pages {
+        Some(format!("{}?page={}&limit={}", base_path, page + 1, limit))
+    } else {
+        None
+    };
+    let prev = if page > 1 {
+        Some(format!("{}?page={}&limit={}", base_path, page - 1, limit))
+    } else {
+        None
+    };
+
+    ProfileListResponse {
+        status: "success".into(),
+        page,
+        limit,
+        total,
+        total_pages,
+        links: PaginationLinks { self_, next, prev },
+        data,
+    }
 }
