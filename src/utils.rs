@@ -12,6 +12,7 @@ use crate::{
         country::{NationalizeRawResponse, NationalizeResponse},
         gender::GenderizeResponse,
         profile::{PaginationLinks, ProfileDto, ProfileListResponse},
+        user::Role,
     },
 };
 
@@ -179,5 +180,24 @@ pub fn build_list_response(
         total_pages,
         links: PaginationLinks { self_, next, prev },
         data,
+    }
+}
+
+/// Assigns a role to a newly created user.
+///
+/// Checks `ADMIN_GITHUB_IDS` (comma-separated GitHub numeric IDs). If the user's
+/// `github_id` is present, they receive `Role::Admin`; otherwise `Role::Analyst`.
+pub fn resolve_role(github_id: &str) -> Role {
+    let admin_ids = std::env::var("ADMIN_GITHUB_IDS").unwrap_or_default();
+    let is_admin = admin_ids
+        .split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .any(|id| id == github_id);
+
+    if is_admin {
+        Role::Admin
+    } else {
+        Role::default()
     }
 }
