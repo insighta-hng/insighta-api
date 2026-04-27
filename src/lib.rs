@@ -34,9 +34,7 @@ pub struct AppState {
 
 pub fn create_app(state: AppState) -> axum::Router {
     let cors = tower_http::cors::CorsLayer::new()
-        .allow_origin(tower_http::cors::AllowOrigin::predicate(
-            |_, _| true,
-        ))
+        .allow_origin(tower_http::cors::AllowOrigin::predicate(|_, _| true))
         .allow_methods(vec![
             axum::http::Method::GET,
             axum::http::Method::POST,
