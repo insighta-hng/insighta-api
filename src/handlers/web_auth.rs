@@ -92,7 +92,7 @@ pub async fn web_exchange(
         .client
         .get()
         .get("https://api.github.com/user")
-        .header("Authorization", format!("Bearer {}", github_token))
+        .header("Authorization", format!("Bearer {github_token}"))
         .header("User-Agent", "insighta-api")
         .send()
         .await

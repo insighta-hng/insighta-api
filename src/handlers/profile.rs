@@ -381,7 +381,7 @@ pub async fn export_profiles_to_csv(
             "country_probability",
             "created_at",
         ])
-        .map_err(|e| AppError::InternalServerError(format!("CSV write error: {}", e)))?;
+        .map_err(|e| AppError::InternalServerError(format!("CSV write error: {e}")))?;
 
     for profile in profiles {
         writer
@@ -399,19 +399,19 @@ pub async fn export_profiles_to_csv(
                     .created_at
                     .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
             ])
-            .map_err(|e| AppError::InternalServerError(format!("CSV write error: {}", e)))?;
+            .map_err(|e| AppError::InternalServerError(format!("CSV write error: {e}")))?;
     }
 
     let csv_bytes = writer
         .into_inner()
-        .map_err(|e| AppError::InternalServerError(format!("CSV flush error: {}", e)))?;
+        .map_err(|e| AppError::InternalServerError(format!("CSV flush error: {e}")))?;
 
     let timestamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
-    let filename = format!("profiles_{}.csv", timestamp);
+    let filename = format!("profiles_{timestamp}.csv");
 
     let content_disposition =
-        header::HeaderValue::from_str(&format!("attachment; filename=\"{}\"", filename))
-            .map_err(|e| AppError::InternalServerError(format!("Invalid header value: {}", e)))?;
+        header::HeaderValue::from_str(&format!("attachment; filename=\"{filename}\""))
+            .map_err(|e| AppError::InternalServerError(format!("Invalid header value: {e}")))?;
 
     let headers = AppendHeaders([
         (

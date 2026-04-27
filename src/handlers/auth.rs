@@ -70,8 +70,7 @@ pub async fn github_init(
     // PKCE: tell GitHub which challenge to expect so it enforces the verifier at exchange time.
     if let Some(ref challenge) = query.code_challenge {
         url.push_str(&format!(
-            "&code_challenge={}&code_challenge_method=S256",
-            challenge
+            "&code_challenge={challenge}&code_challenge_method=S256"
         ));
     }
 
@@ -167,7 +166,7 @@ pub async fn github_callback(
         .client
         .get()
         .get("https://api.github.com/user")
-        .header("Authorization", format!("Bearer {}", github_token))
+        .header("Authorization", format!("Bearer {github_token}"))
         .header("User-Agent", "insighta-api")
         .send()
         .await

@@ -124,7 +124,7 @@ impl ProfileRepo {
             ])
             .await
             .map_err(|e| {
-                AppError::ServiceUnavailable(format!("Failed to create indexes: {}", e))
+                AppError::ServiceUnavailable(format!("Failed to create indexes: {e}"))
             })?;
 
         tracing::info!("Database indexes verified");
@@ -135,14 +135,14 @@ impl ProfileRepo {
         self.collection
             .find_one(bson::doc! { "name": name })
             .await
-            .map_err(|e| AppError::ServiceUnavailable(format!("DB Search Error: {}", e)))
+            .map_err(|e| AppError::ServiceUnavailable(format!("DB Search Error: {e}")))
     }
 
     pub async fn find_by_id(&self, id: Uuid) -> Result<Option<Profile>> {
         self.collection
             .find_one(bson::doc! { "_id": bson::Uuid::from(id) })
             .await
-            .map_err(|e| AppError::ServiceUnavailable(format!("DB Search Error: {}", e)))
+            .map_err(|e| AppError::ServiceUnavailable(format!("DB Search Error: {e}")))
     }
 
     pub async fn delete_by_id(&self, id: Uuid) -> Result<bool> {
@@ -150,7 +150,7 @@ impl ProfileRepo {
             .collection
             .delete_one(bson::doc! { "_id": bson::Uuid::from(id) })
             .await
-            .map_err(|e| AppError::ServiceUnavailable(format!("DB Delete Error: {}", e)))?;
+            .map_err(|e| AppError::ServiceUnavailable(format!("DB Delete Error: {e}")))?;
         Ok(result.deleted_count > 0)
     }
 
@@ -232,14 +232,14 @@ impl ProfileRepo {
         let (cursor_res, count_res) = tokio::join!(cursor_future, count_future);
 
         let cursor = cursor_res
-            .map_err(|e| AppError::ServiceUnavailable(format!("DB Find Error: {}", e)))?;
+            .map_err(|e| AppError::ServiceUnavailable(format!("DB Find Error: {e}")))?;
         let count = count_res
-            .map_err(|e| AppError::ServiceUnavailable(format!("DB Count Error: {}", e)))?;
+            .map_err(|e| AppError::ServiceUnavailable(format!("DB Count Error: {e}")))?;
 
         let profiles: Vec<Profile> = cursor
             .try_collect()
             .await
-            .map_err(|e| AppError::ServiceUnavailable(format!("DB Cursor Error: {}", e)))?;
+            .map_err(|e| AppError::ServiceUnavailable(format!("DB Cursor Error: {e}")))?;
 
         Ok((profiles, count))
     }
@@ -256,8 +256,7 @@ impl ProfileRepo {
                     ));
                 }
                 Err(AppError::ServiceUnavailable(format!(
-                    "DB Insert Error: {}",
-                    e
+                    "DB Insert Error: {e}"
                 )))
             }
         }
@@ -292,14 +291,12 @@ impl ProfileRepo {
                         let non_dup_count =
                             write_errors.iter().filter(|err| err.code != 11000).count();
                         return Err(AppError::ServiceUnavailable(format!(
-                            "DB Bulk Insert partially failed: {} non-duplicate errors occurred",
-                            non_dup_count
+                            "DB Bulk Insert partially failed: {non_dup_count} non-duplicate errors occurred"
                         )));
                     }
                 }
                 Err(AppError::ServiceUnavailable(format!(
-                    "DB Bulk Insert Error: {}",
-                    e
+                    "DB Bulk Insert Error: {e}"
                 )))
             }
         }
@@ -323,11 +320,11 @@ impl ProfileRepo {
             .find(filter_doc)
             .with_options(find_options)
             .await
-            .map_err(|e| AppError::ServiceUnavailable(format!("DB Find Error: {}", e)))?;
+            .map_err(|e| AppError::ServiceUnavailable(format!("DB Find Error: {e}")))?;
 
         cursor
             .try_collect()
             .await
-            .map_err(|e| AppError::ServiceUnavailable(format!("DB Cursor Error: {}", e)))
+            .map_err(|e| AppError::ServiceUnavailable(format!("DB Cursor Error: {e}")))
     }
 }

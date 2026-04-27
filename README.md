@@ -26,7 +26,7 @@ REST API powering the Insighta Labs+ profile intelligence platform, built with R
 
 ### GitHub OAuth App
 
-1. Go to **GitHub → Settings → Developer Settings → OAuth Apps → New OAuth App**.
+1. Go to **GitHub → Settings → Developer Settings → GitHub Apps → New GitHub App**.
 2. Set the following fields:
    - **Application name**: Insighta Labs (or any name)
    - **Homepage URL**: your deployed app URL, or `http://localhost:8000` for local dev
@@ -35,9 +35,8 @@ REST API powering the Insighta Labs+ profile intelligence platform, built with R
 4. Click **Generate a new client secret** and copy it immediately — it is not shown again.
 5. Set `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` in your `.env`.
 
-For the CLI callback (`http://localhost:8182/callback`), GitHub allows multiple callback URLs per OAuth App — add it under **Callback URLs** in the app settings.
+GitHub Apps support multiple callback URLs, so the web and CLI callbacks can all be registered on the same app.
 
-> You can use a single OAuth App for both CLI and web development. For production, separate apps per client give finer-grained control.
 
 ### Admin ID Setup
 
