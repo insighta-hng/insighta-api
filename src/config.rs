@@ -8,6 +8,7 @@ pub struct AppConfig {
     pub github_client_secret: String,
     pub github_redirect_uri: Option<String>,
     pub jwt_secret: String,
+    pub admin_github_ids: String,
 }
 
 impl AppConfig {
@@ -25,6 +26,7 @@ impl AppConfig {
             github_redirect_uri: std::env::var("GITHUB_REDIRECT_URI").ok(),
             jwt_secret: std::env::var("JWT_SECRET")
                 .map_err(|_| AppError::InternalServerError("JWT_SECRET is required".into()))?,
+            admin_github_ids: std::env::var("ADMIN_GITHUB_IDS").unwrap_or_default(),
         })
     }
 }

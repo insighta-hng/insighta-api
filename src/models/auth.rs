@@ -65,3 +65,18 @@ pub struct AuthMiddlewareState {
     pub user_repo: UserRepo,
     pub jwt_secret: String,
 }
+
+#[derive(Debug, Serialize)]
+pub struct UserInfoResponse {
+    pub status: String,
+    pub data: UserInfo,
+}
+
+#[derive(Debug, Serialize)]
+pub struct UserInfo {
+    pub id: String,
+    pub username: String,
+    pub email: String,
+    pub avatar_url: String,
+    pub role: String,
+}

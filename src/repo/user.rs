@@ -56,12 +56,12 @@ impl UserRepo {
             .map_err(|e| AppError::ServiceUnavailable(format!("DB Search Error: {}", e)))
     }
 
-    pub async fn upsert(&self, info: &GithubUserInfo) -> Result<User> {
+    pub async fn upsert(&self, info: &GithubUserInfo, admin_ids: &str) -> Result<User> {
         let now = Utc::now();
 
         match self.find_by_github_id(&info.github_id).await? {
             Some(_existing) => {
-                let role = resolve_role(&info.github_id);
+                let role = resolve_role(&info.github_id, admin_ids);
                 let update = bson::doc! {
                     "$set": {
                         "username": &info.username,
@@ -91,7 +91,7 @@ impl UserRepo {
                     username: info.username.clone(),
                     email: info.email.clone(),
                     avatar_url: info.avatar_url.clone(),
-                    role: resolve_role(&info.github_id),
+                    role: resolve_role(&info.github_id, admin_ids),
                     is_active: true,
                     last_login_at: now,
                     created_at: now,

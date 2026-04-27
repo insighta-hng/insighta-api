@@ -1,4 +1,5 @@
 use dashmap::DashMap;
+use tower_cookies::CookieManagerLayer;
 
 use crate::{config::AppConfig, middleware::rate_limit::RateLimitStore};
 
@@ -33,9 +34,23 @@ pub struct AppState {
 
 pub fn create_app(state: AppState) -> axum::Router {
     let cors = tower_http::cors::CorsLayer::new()
-        .allow_origin(tower_http::cors::Any)
-        .allow_methods(tower_http::cors::Any)
-        .allow_headers(tower_http::cors::Any);
+        .allow_origin(tower_http::cors::AllowOrigin::predicate(
+            |_, _| true,
+        ))
+        .allow_methods(vec![
+            axum::http::Method::GET,
+            axum::http::Method::POST,
+            axum::http::Method::PUT,
+            axum::http::Method::DELETE,
+            axum::http::Method::OPTIONS,
+        ])
+        .allow_headers(vec![
+            axum::http::header::CONTENT_TYPE,
+            axum::http::header::AUTHORIZATION,
+            axum::http::HeaderName::from_static("x-api-version"),
+            axum::http::HeaderName::from_static("x-csrf-token"),
+        ])
+        .allow_credentials(true);
 
     let auth_rate_store = state.auth_rate_limit.clone();
     let api_rate_store = state.api_rate_limit.clone();
@@ -58,6 +73,25 @@ pub fn create_app(state: AppState) -> axum::Router {
             axum::routing::post(handlers::auth::refresh),
         )
         .route("/auth/logout", axum::routing::post(handlers::auth::logout))
+        .layer(axum::middleware::from_fn_with_state(
+            auth_rate_store.clone(),
+            middleware::rate_limit::auth_rate_limit,
+        ));
+
+    let web_auth_router = axum::Router::new()
+        .route(
+            "/auth/web/exchange",
+            axum::routing::post(handlers::web_auth::web_exchange),
+        )
+        .route(
+            "/auth/web/refresh",
+            axum::routing::post(handlers::web_auth::web_refresh),
+        )
+        .route(
+            "/auth/web/logout",
+            axum::routing::post(handlers::web_auth::web_logout),
+        )
+        .route("/auth/me", axum::routing::get(handlers::web_auth::me))
         .layer(axum::middleware::from_fn_with_state(
             auth_rate_store,
             middleware::rate_limit::auth_rate_limit,
@@ -96,10 +130,11 @@ pub fn create_app(state: AppState) -> axum::Router {
 
     axum::Router::new()
         .merge(auth_router)
+        .merge(web_auth_router)
         .merge(api_router)
         .layer(
-            tower_http::trace::TraceLayer::new_for_http().make_span_with(
-                |request: &axum::http::Request<_>| {
+            tower_http::trace::TraceLayer::new_for_http()
+                .make_span_with(|request: &axum::http::Request<_>| {
                     let request_id = request
                         .extensions()
                         .get::<RequestId>()
@@ -113,9 +148,20 @@ pub fn create_app(state: AppState) -> axum::Router {
                         version = ?request.version(),
                         request_id = %request_id,
                     )
-                },
-            ),
+                })
+                .on_response(
+                    |response: &axum::http::Response<_>,
+                     latency: std::time::Duration,
+                     _span: &tracing::Span| {
+                        tracing::info!(
+                            status = response.status().as_u16(),
+                            latency_ms = latency.as_millis(),
+                            "response"
+                        );
+                    },
+                ),
         )
+        .layer(CookieManagerLayer::new())
         .layer(axum::middleware::from_fn(
             middleware::request_id::request_id,
         ))
