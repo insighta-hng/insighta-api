@@ -27,20 +27,20 @@ async fn main() -> Result<()> {
 
     let mut client_options = ClientOptions::parse(&config.database_url)
         .await
-        .map_err(|e| AppError::ServiceUnavailable(format!("Failed to parse MongoDB URI: {}", e)))?;
+        .map_err(|e| AppError::ServiceUnavailable(format!("Failed to parse MongoDB URI: {e}")))?;
 
     let server_api = ServerApi::builder().version(ServerApiVersion::V1).build();
     client_options.server_api = Some(server_api);
 
     let mongo_client = mongodb::Client::with_options(client_options).map_err(|e| {
-        AppError::ServiceUnavailable(format!("Failed to initialize MongoDB client: {}", e))
+        AppError::ServiceUnavailable(format!("Failed to initialize MongoDB client: {e}"))
     })?;
 
     mongo_client
         .database("admin")
         .run_command(doc! {"ping": 1})
         .await
-        .map_err(|e| AppError::ServiceUnavailable(format!("Failed to ping MongoDB: {}", e)))?;
+        .map_err(|e| AppError::ServiceUnavailable(format!("Failed to ping MongoDB: {e}")))?;
 
     tracing::info!("Successfully connected to MongoDB Atlas");
 
@@ -70,7 +70,7 @@ async fn main() -> Result<()> {
 
     let app = create_app(state);
 
-    let listener = TcpListener::bind(format!("0.0.0.0:{}", server_port)).await?;
+    let listener = TcpListener::bind(format!("0.0.0.0:{server_port}")).await?;
 
     tracing::info!("Server running on port {}", server_port);
 

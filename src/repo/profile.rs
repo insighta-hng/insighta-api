@@ -123,9 +123,7 @@ impl ProfileRepo {
                 country_prob_index,
             ])
             .await
-            .map_err(|e| {
-                AppError::ServiceUnavailable(format!("Failed to create indexes: {e}"))
-            })?;
+            .map_err(|e| AppError::ServiceUnavailable(format!("Failed to create indexes: {e}")))?;
 
         tracing::info!("Database indexes verified");
         Ok(())
@@ -231,10 +229,10 @@ impl ProfileRepo {
 
         let (cursor_res, count_res) = tokio::join!(cursor_future, count_future);
 
-        let cursor = cursor_res
-            .map_err(|e| AppError::ServiceUnavailable(format!("DB Find Error: {e}")))?;
-        let count = count_res
-            .map_err(|e| AppError::ServiceUnavailable(format!("DB Count Error: {e}")))?;
+        let cursor =
+            cursor_res.map_err(|e| AppError::ServiceUnavailable(format!("DB Find Error: {e}")))?;
+        let count =
+            count_res.map_err(|e| AppError::ServiceUnavailable(format!("DB Count Error: {e}")))?;
 
         let profiles: Vec<Profile> = cursor
             .try_collect()

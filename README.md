@@ -11,14 +11,14 @@ REST API powering the Insighta Labs+ profile intelligence platform, built with R
 
 ## Stack
 
-| Layer         | Tool                           | Purpose                                  |
-| ------------- | ------------------------------ | ---------------------------------------- |
-| Runtime       | Rust 1.85+ (edition 2024)      | —                                        |
-| Web           | Axum 0.8                       | Routing, middleware, extractors          |
-| Database      | MongoDB Atlas                  | Profiles, users, refresh tokens          |
-| Auth          | jsonwebtoken + tower-cookies   | JWT signing, HTTP-only cookie management |
-| HTTP client   | Reqwest                        | External API calls + GitHub OAuth        |
-| Observability | tracing + tracing-subscriber   | Structured JSON logs                     |
+| Layer         | Tool                         | Purpose                                  |
+| ------------- | ---------------------------- | ---------------------------------------- |
+| Runtime       | Rust 1.85+ (edition 2024)    | —                                        |
+| Web           | Axum 0.8                     | Routing, middleware, extractors          |
+| Database      | MongoDB Atlas                | Profiles, users, refresh tokens          |
+| Auth          | jsonwebtoken + tower-cookies | JWT signing, HTTP-only cookie management |
+| HTTP client   | Reqwest                      | External API calls + GitHub OAuth        |
+| Observability | tracing + tracing-subscriber | Structured JSON logs                     |
 
 ---
 
@@ -36,7 +36,6 @@ REST API powering the Insighta Labs+ profile intelligence platform, built with R
 5. Set `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` in your `.env`.
 
 GitHub Apps support multiple callback URLs, so the web and CLI callbacks can all be registered on the same app.
-
 
 ### Admin ID Setup
 
@@ -75,10 +74,10 @@ cargo run
 | ---------------------- | :------: | --------------------------- | ------------------------------------------------- |
 | `DATABASE_URL`         |          | `mongodb://localhost:27017` | MongoDB connection string                         |
 | `DATABASE_NAME`        |          | `stage2`                    | Database name                                     |
-| `GITHUB_CLIENT_ID`     | ✅       | —                           | GitHub OAuth App client ID                        |
-| `GITHUB_CLIENT_SECRET` | ✅       | —                           | GitHub OAuth App client secret                    |
+| `GITHUB_CLIENT_ID`     |    ✅    | —                           | GitHub OAuth App client ID                        |
+| `GITHUB_CLIENT_SECRET` |    ✅    | —                           | GitHub OAuth App client secret                    |
 | `GITHUB_REDIRECT_URI`  |          | —                           | OAuth redirect URI (required for CLI flow)        |
-| `JWT_SECRET`           | ✅       | —                           | HMAC secret for signing access tokens             |
+| `JWT_SECRET`           |    ✅    | —                           | HMAC secret for signing access tokens             |
 | `ADMIN_GITHUB_IDS`     |          | `""`                        | Comma-separated GitHub numeric user IDs for admin |
 | `PORT`                 |          | `8000`                      | Server bind port                                  |
 | `SECURE_COOKIES`       |          | `false`                     | Set `true` in production (HTTPS-only cookies)     |
@@ -181,11 +180,11 @@ POST /auth/web/exchange?code=<code>&state=<state>&code_verifier=<verifier>
 
 The backend validates PKCE and sets three cookies:
 
-| Cookie          | TTL   | `HttpOnly` | JS-readable      | Purpose                 |
-| --------------- | ----- | :--------: | :--------------: | ----------------------- |
-| `access_token`  | 3 min | ✅         | ❌               | API authentication      |
-| `refresh_token` | 5 min | ✅         | ❌               | Token rotation          |
-| `csrf_token`    | 5 min | ❌         | ✅ (intentional) | CSRF double-submit      |
+| Cookie          | TTL   | `HttpOnly` |   JS-readable    | Purpose            |
+| --------------- | ----- | :--------: | :--------------: | ------------------ |
+| `access_token`  | 3 min |     ✅     |        ❌        | API authentication |
+| `refresh_token` | 5 min |     ✅     |        ❌        | Token rotation     |
+| `csrf_token`    | 5 min |     ❌     | ✅ (intentional) | CSRF double-submit |
 
 > `access_token` and `refresh_token` are never readable by JavaScript. The `csrf_token` is intentionally readable so the frontend can attach it as `X-CSRF-Token` on mutating requests.
 
@@ -195,22 +194,22 @@ The backend validates PKCE and sets three cookies:
 
 **Access token**
 
-| Property  | Value                                                                    |
-| --------- | ------------------------------------------------------------------------ |
-| Format    | JWT, signed HS256                                                        |
-| Expiry    | 3 minutes                                                                |
-| Claims    | `sub` (UUID), `role`, `username`, `iat`, `exp`                           |
-| Transport | `Authorization: Bearer <token>` (CLI) / `access_token` cookie (web)     |
+| Property  | Value                                                               |
+| --------- | ------------------------------------------------------------------- |
+| Format    | JWT, signed HS256                                                   |
+| Expiry    | 3 minutes                                                           |
+| Claims    | `sub` (UUID), `role`, `username`, `iat`, `exp`                      |
+| Transport | `Authorization: Bearer <token>` (CLI) / `access_token` cookie (web) |
 
 **Refresh token**
 
-| Property    | Value                                                                       |
-| ----------- | --------------------------------------------------------------------------- |
-| Format      | 64-char opaque hex string                                                   |
-| Expiry      | 5 minutes                                                                   |
-| Storage     | SHA-256 hash persisted to MongoDB; raw value is never stored                |
-| Auto-expiry | MongoDB TTL index on `expires_at` auto-deletes stale documents              |
-| Consumption | `find_one_and_delete` — one-time use, atomically invalidated on read        |
+| Property    | Value                                                                |
+| ----------- | -------------------------------------------------------------------- |
+| Format      | 64-char opaque hex string                                            |
+| Expiry      | 5 minutes                                                            |
+| Storage     | SHA-256 hash persisted to MongoDB; raw value is never stored         |
+| Auto-expiry | MongoDB TTL index on `expires_at` auto-deletes stale documents       |
+| Consumption | `find_one_and_delete` — one-time use, atomically invalidated on read |
 
 Each refresh issues a completely new token pair. The old token is invalidated in the same atomic operation that produces the new one. The CLI retries the original request automatically after a successful refresh; the web portal redirects to login if the refresh fails.
 
@@ -220,10 +219,10 @@ Each refresh issues a completely new token pair. The old token is invalidated in
 
 ### Roles
 
-| Role      | Assigned when                              | Permissions                          |
-| --------- | ------------------------------------------ | ------------------------------------ |
-| `admin`   | GitHub ID present in `ADMIN_GITHUB_IDS`    | Create, delete, read, search, export |
-| `analyst` | Default for all other authenticated users  | Read, search, export                 |
+| Role      | Assigned when                             | Permissions                          |
+| --------- | ----------------------------------------- | ------------------------------------ |
+| `admin`   | GitHub ID present in `ADMIN_GITHUB_IDS`   | Create, delete, read, search, export |
+| `analyst` | Default for all other authenticated users | Read, search, export                 |
 
 ### Enforcement Chain
 
@@ -252,29 +251,29 @@ Each refresh issues a completely new token pair. The old token is invalidated in
 
 ### Profile Endpoints
 
-| Method | Path                    | Role  | Description                               |
-| ------ | ----------------------- | ----- | ----------------------------------------- |
-| GET    | `/api/profiles`         | Any   | List with filters, sorting, pagination    |
-| POST   | `/api/profiles`         | Admin | Create profile (calls 3 external APIs)    |
-| GET    | `/api/profiles/{id}`    | Any   | Single profile by UUID                    |
-| DELETE | `/api/profiles/{id}`    | Admin | Delete profile (`204 No Content`)         |
-| GET    | `/api/profiles/search`  | Any   | Natural language search (`?q=`)           |
-| GET    | `/api/profiles/export`  | Any   | Download CSV (`?format=csv`)              |
+| Method | Path                   | Role  | Description                            |
+| ------ | ---------------------- | ----- | -------------------------------------- |
+| GET    | `/api/profiles`        | Any   | List with filters, sorting, pagination |
+| POST   | `/api/profiles`        | Admin | Create profile (calls 3 external APIs) |
+| GET    | `/api/profiles/{id}`   | Any   | Single profile by UUID                 |
+| DELETE | `/api/profiles/{id}`   | Admin | Delete profile (`204 No Content`)      |
+| GET    | `/api/profiles/search` | Any   | Natural language search (`?q=`)        |
+| GET    | `/api/profiles/export` | Any   | Download CSV (`?format=csv`)           |
 
 **`GET /api/profiles` — query parameters:**
 
-| Parameter                 | Type    | Default | Description                                       |
-| ------------------------- | ------- | ------- | ------------------------------------------------- |
-| `gender`                  | string  | —       | `male` or `female`                                |
-| `age_group`               | string  | —       | `child`, `teenager`, `adult`, or `senior`         |
-| `country_id`              | string  | —       | ISO 3166-1 alpha-2 (e.g. `NG`)                    |
-| `min_age` / `max_age`     | integer | —       | Inclusive age bounds                              |
-| `min_gender_probability`  | float   | —       | Gender confidence threshold (0.0–1.0)             |
-| `min_country_probability` | float   | —       | Country confidence threshold (0.0–1.0)            |
-| `sort_by`                 | string  | `age`   | `age`, `created_at`, or `gender_probability`      |
-| `order`                   | string  | `asc`   | `asc` or `desc`                                   |
-| `page`                    | integer | `1`     | Page number (1-indexed)                           |
-| `limit`                   | integer | `10`    | Results per page (max 50)                         |
+| Parameter                 | Type    | Default | Description                                  |
+| ------------------------- | ------- | ------- | -------------------------------------------- |
+| `gender`                  | string  | —       | `male` or `female`                           |
+| `age_group`               | string  | —       | `child`, `teenager`, `adult`, or `senior`    |
+| `country_id`              | string  | —       | ISO 3166-1 alpha-2 (e.g. `NG`)               |
+| `min_age` / `max_age`     | integer | —       | Inclusive age bounds                         |
+| `min_gender_probability`  | float   | —       | Gender confidence threshold (0.0–1.0)        |
+| `min_country_probability` | float   | —       | Country confidence threshold (0.0–1.0)       |
+| `sort_by`                 | string  | `age`   | `age`, `created_at`, or `gender_probability` |
+| `order`                   | string  | `asc`   | `asc` or `desc`                              |
+| `page`                    | integer | `1`     | Page number (1-indexed)                      |
+| `limit`                   | integer | `10`    | Results per page (max 50)                    |
 
 ### Pagination
 
@@ -313,10 +312,10 @@ All errors use a consistent envelope:
 
 **Gender**
 
-| Tokens                                                                    | Filter          |
-| ------------------------------------------------------------------------- | --------------- |
-| `male`, `males`, `man`, `men`, `boy`, `boys`                              | `gender=male`   |
-| `female`, `females`, `woman`, `women`, `girl`, `girls`, `lady`, `ladies`  | `gender=female` |
+| Tokens                                                                   | Filter          |
+| ------------------------------------------------------------------------ | --------------- |
+| `male`, `males`, `man`, `men`, `boy`, `boys`                             | `gender=male`   |
+| `female`, `females`, `woman`, `women`, `girl`, `girls`, `lady`, `ladies` | `gender=female` |
 
 > If both gender token groups appear in the same query, the gender filter is dropped entirely.
 
@@ -324,22 +323,22 @@ All errors use a consistent envelope:
 
 **Age groups**
 
-| Tokens                                                      | Filter                   |
-| ----------------------------------------------------------- | ------------------------ |
-| `child`, `children`, `kid`, `kids`                          | `age_group=child`        |
-| `teenager`, `teenagers`, `teen`, `teens`                    | `age_group=teenager`     |
-| `adult`, `adults`, `grownup`, `grownups`, `middle-aged`     | `age_group=adult`        |
-| `senior`, `seniors`, `old`, `elderly`                       | `age_group=senior`       |
-| `young`                                                     | `min_age=16, max_age=24` |
+| Tokens                                                  | Filter                   |
+| ------------------------------------------------------- | ------------------------ |
+| `child`, `children`, `kid`, `kids`                      | `age_group=child`        |
+| `teenager`, `teenagers`, `teen`, `teens`                | `age_group=teenager`     |
+| `adult`, `adults`, `grownup`, `grownups`, `middle-aged` | `age_group=adult`        |
+| `senior`, `seniors`, `old`, `elderly`                   | `age_group=senior`       |
+| `young`                                                 | `min_age=16, max_age=24` |
 
 ---
 
 **Age range bigrams** (`keyword N`)
 
-| Pattern                          | Filter      |
-| -------------------------------- | ----------- |
-| `above N`, `over N`, `least N`   | `min_age=N` |
-| `below N`, `under N`, `most N`   | `max_age=N` |
+| Pattern                        | Filter      |
+| ------------------------------ | ----------- |
+| `above N`, `over N`, `least N` | `min_age=N` |
+| `below N`, `under N`, `most N` | `max_age=N` |
 
 ---
 
@@ -360,13 +359,13 @@ All errors use a consistent envelope:
 
 **Example queries**
 
-| Query                      | Filters applied                                   |
-| -------------------------- | ------------------------------------------------- |
-| `young males`              | `gender=male, min_age=16, max_age=24`             |
-| `females above 30`         | `gender=female, min_age=30`                       |
-| `adult males from kenya`   | `gender=male, age_group=adult, country_id=KE`     |
-| `top 5 women`              | `gender=female, sort created_at desc, limit 5`    |
-| `nigeria`                  | `country_id=NG`                                   |
+| Query                    | Filters applied                                |
+| ------------------------ | ---------------------------------------------- |
+| `young males`            | `gender=male, min_age=16, max_age=24`          |
+| `females above 30`       | `gender=female, min_age=30`                    |
+| `adult males from kenya` | `gender=male, age_group=adult, country_id=KE`  |
+| `top 5 women`            | `gender=female, sort created_at desc, limit 5` |
+| `nigeria`                | `country_id=NG`                                |
 
 </details>
 
@@ -416,17 +415,17 @@ Missing or unrecognised headers return:
 
 ### `users` collection
 
-| Field           | Type     | Notes                                |
-| --------------- | -------- | ------------------------------------ |
-| `id`            | UUID v7  | Primary key                          |
-| `github_id`     | integer  | Unique; GitHub's numeric user ID     |
-| `username`      | string   | GitHub login handle                  |
-| `email`         | string   | May be `null` if hidden on GitHub    |
-| `avatar_url`    | string   | GitHub avatar URL                    |
-| `role`          | string   | `admin` or `analyst`                 |
-| `is_active`     | bool     | `false` disables all access          |
-| `last_login_at` | datetime | Updated on every successful login    |
-| `created_at`    | datetime | Set at first upsert                  |
+| Field           | Type     | Notes                             |
+| --------------- | -------- | --------------------------------- |
+| `id`            | UUID v7  | Primary key                       |
+| `github_id`     | integer  | Unique; GitHub's numeric user ID  |
+| `username`      | string   | GitHub login handle               |
+| `email`         | string   | May be `null` if hidden on GitHub |
+| `avatar_url`    | string   | GitHub avatar URL                 |
+| `role`          | string   | `admin` or `analyst`              |
+| `is_active`     | bool     | `false` disables all access       |
+| `last_login_at` | datetime | Updated on every successful login |
+| `created_at`    | datetime | Set at first upsert               |
 
 Indexes: unique on `id`, unique on `github_id`.
 
@@ -463,7 +462,13 @@ Indexes: unique on `id`, unique on `name`, compound on `(country_id, gender, age
 
 ## CLI Companion
 
-The `insighta-cli` is a separate companion tool at [insighta-labs/insighta-cli](https://github.com/insighta-labs/insighta-cli). It communicates with this API using Bearer token auth and stores credentials at `~/.insighta/credentials.json`. Refer to that repository for installation instructions and the full command reference.
+The `insighta-cli` is a separate companion tool at [insighta-labs/insighta-cli](https://github.com/insighta-labs/insighta-cli). It communicates with this API using Bearer token auth and stores credentials at `~/.insighta/credentials.json`.
+
+**Quick Install:**
+
+```bash
+chmod +x install.sh && ./install.sh
+```
 
 ---
 

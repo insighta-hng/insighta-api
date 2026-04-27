@@ -55,9 +55,7 @@ impl RefreshTokenRepo {
             .create_indexes(vec![ttl_index, token_index])
             .await
             .map_err(|e| {
-                AppError::ServiceUnavailable(format!(
-                    "Failed to create refresh token indexes: {e}"
-                ))
+                AppError::ServiceUnavailable(format!("Failed to create refresh token indexes: {e}"))
             })?;
 
         tracing::info!("Refresh token indexes verified");
