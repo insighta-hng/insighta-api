@@ -76,11 +76,7 @@ pub fn create_app(state: AppState) -> axum::Router {
             middleware::rate_limit::auth_rate_limit,
         ));
 
-    let web_auth_router = axum::Router::new()
-        .route(
-            "/auth/web/exchange",
-            axum::routing::post(handlers::web_auth::web_exchange),
-        )
+    let csrf_web_routes = axum::Router::new()
         .route(
             "/auth/web/refresh",
             axum::routing::post(handlers::web_auth::web_refresh),
@@ -89,7 +85,15 @@ pub fn create_app(state: AppState) -> axum::Router {
             "/auth/web/logout",
             axum::routing::post(handlers::web_auth::web_logout),
         )
+        .layer(axum::middleware::from_fn(middleware::csrf::csrf_protection));
+
+    let web_auth_router = axum::Router::new()
+        .route(
+            "/auth/web/exchange",
+            axum::routing::post(handlers::web_auth::web_exchange),
+        )
         .route("/auth/me", axum::routing::get(handlers::web_auth::me))
+        .merge(csrf_web_routes)
         .layer(axum::middleware::from_fn_with_state(
             auth_rate_store,
             middleware::rate_limit::auth_rate_limit,
