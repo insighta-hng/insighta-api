@@ -135,9 +135,19 @@ pub async fn web_exchange(
     let refresh_token = issue_refresh_token(user.id, &state.refresh_token_repo).await?;
     let csrf_token = generate_csrf_token();
 
-    cookies.add(make_http_only_cookie(ACCESS_COOKIE, access_token, 180));
-    cookies.add(make_http_only_cookie(REFRESH_COOKIE, refresh_token, 300));
-    cookies.add(make_csrf_cookie(csrf_token));
+    cookies.add(make_http_only_cookie(
+        ACCESS_COOKIE,
+        access_token,
+        180,
+        state.config.secure_cookies,
+    ));
+    cookies.add(make_http_only_cookie(
+        REFRESH_COOKIE,
+        refresh_token,
+        300,
+        state.config.secure_cookies,
+    ));
+    cookies.add(make_csrf_cookie(csrf_token, state.config.secure_cookies));
 
     Ok((
         StatusCode::OK,
@@ -231,9 +241,19 @@ pub async fn web_refresh(
     let new_refresh = issue_refresh_token(user.id, &state.refresh_token_repo).await?;
     let csrf_token = generate_csrf_token();
 
-    cookies.add(make_http_only_cookie(ACCESS_COOKIE, new_access, 180));
-    cookies.add(make_http_only_cookie(REFRESH_COOKIE, new_refresh, 300));
-    cookies.add(make_csrf_cookie(csrf_token));
+    cookies.add(make_http_only_cookie(
+        ACCESS_COOKIE,
+        new_access,
+        180,
+        state.config.secure_cookies,
+    ));
+    cookies.add(make_http_only_cookie(
+        REFRESH_COOKIE,
+        new_refresh,
+        300,
+        state.config.secure_cookies,
+    ));
+    cookies.add(make_csrf_cookie(csrf_token, state.config.secure_cookies));
 
     Ok(StatusCode::NO_CONTENT)
 }
