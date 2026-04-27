@@ -1,6 +1,8 @@
 use axum::extract::Request;
+use rand::Rng;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use tower_cookies::Cookie;
 
 use crate::{
     AppState,
@@ -16,6 +18,8 @@ use crate::{
         user::Role,
     },
 };
+
+pub const CSRF_COOKIE: &str = "csrf_token";
 
 pub fn iso_to_country_name(code: &str) -> &'static str {
     let uppercase_code = code.to_uppercase();
@@ -206,8 +210,7 @@ pub fn build_list_response(
 ///
 /// Checks `ADMIN_GITHUB_IDS` (comma-separated GitHub numeric IDs). If the user's
 /// `github_id` is present, they receive `Role::Admin`; otherwise `Role::Analyst`.
-pub fn resolve_role(github_id: &str) -> Role {
-    let admin_ids = std::env::var("ADMIN_GITHUB_IDS").unwrap_or_default();
+pub fn resolve_role(github_id: &str, admin_ids: &str) -> Role {
     let is_admin = admin_ids
         .split(',')
         .map(|s| s.trim())
@@ -223,4 +226,38 @@ pub fn resolve_role(github_id: &str) -> Role {
 
 pub fn hash_token(token: &str) -> String {
     hex::encode(Sha256::digest(token.as_bytes()))
+}
+
+pub fn generate_csrf_token() -> String {
+    let mut bytes = [0u8; 16];
+    rand::rng().fill_bytes(&mut bytes);
+    hex::encode(bytes)
+}
+
+pub fn make_http_only_cookie<'a>(name: &'a str, value: String, max_age_secs: i64) -> Cookie<'a> {
+    let mut cookie = Cookie::new(name, value);
+    cookie.set_http_only(true);
+    cookie.set_secure(false);
+    cookie.set_same_site(tower_cookies::cookie::SameSite::Lax);
+    cookie.set_path("/");
+    cookie.set_max_age(tower_cookies::cookie::time::Duration::seconds(max_age_secs));
+    cookie
+}
+
+pub fn make_csrf_cookie(value: String) -> Cookie<'static> {
+    let mut cookie = Cookie::new(CSRF_COOKIE, value);
+    cookie.set_http_only(false);
+    cookie.set_secure(false);
+    cookie.set_same_site(tower_cookies::cookie::SameSite::Lax);
+    cookie.set_path("/");
+    cookie.set_max_age(tower_cookies::cookie::time::Duration::seconds(300));
+    cookie
+}
+
+pub fn clear_cookie(name: &'static str) -> Cookie<'static> {
+    let mut cookie = Cookie::new(name, "");
+    cookie.set_http_only(true);
+    cookie.set_path("/");
+    cookie.set_max_age(tower_cookies::cookie::time::Duration::seconds(0));
+    cookie
 }
