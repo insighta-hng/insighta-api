@@ -81,6 +81,7 @@ cargo run
 | `GITHUB_REDIRECT_URI`  |          | —                           | OAuth redirect URI (required for CLI flow)        |
 | `JWT_SECRET`           | ✅       | —                           | HMAC secret for signing access tokens             |
 | `ADMIN_GITHUB_IDS`     |          | `""`                        | Comma-separated GitHub numeric user IDs for admin |
+| `PORT`                 |          | `8000`                      | Server bind port                                  |
 | `SECURE_COOKIES`       |          | `false`                     | Set `true` in production (HTTPS-only cookies)     |
 
 > **Note:** `ADMIN_GITHUB_IDS` uses GitHub's numeric user IDs, not usernames. Role assignment is evaluated on every login — changes take effect on the next sign-in without a server restart.
