@@ -140,14 +140,20 @@ pub async fn web_exchange(
         access_token,
         180,
         state.config.secure_cookies,
+        state.config.cross_site_cookies,
     ));
     cookies.add(make_http_only_cookie(
         REFRESH_COOKIE,
         refresh_token,
         300,
         state.config.secure_cookies,
+        state.config.cross_site_cookies,
     ));
-    cookies.add(make_csrf_cookie(csrf_token, state.config.secure_cookies));
+    cookies.add(make_csrf_cookie(
+        csrf_token,
+        state.config.secure_cookies,
+        state.config.cross_site_cookies,
+    ));
 
     Ok((
         StatusCode::OK,
@@ -262,14 +268,20 @@ pub async fn web_refresh(
         new_access,
         180,
         state.config.secure_cookies,
+        state.config.cross_site_cookies,
     ));
     cookies.add(make_http_only_cookie(
         REFRESH_COOKIE,
         new_refresh,
         300,
         state.config.secure_cookies,
+        state.config.cross_site_cookies,
     ));
-    cookies.add(make_csrf_cookie(csrf_token, state.config.secure_cookies));
+    cookies.add(make_csrf_cookie(
+        csrf_token,
+        state.config.secure_cookies,
+        state.config.cross_site_cookies,
+    ));
 
     Ok(StatusCode::NO_CONTENT)
 }

@@ -239,21 +239,31 @@ pub fn make_http_only_cookie<'a>(
     value: String,
     max_age_secs: i64,
     secure: bool,
+    cross_site: bool,
 ) -> Cookie<'a> {
     let mut cookie = Cookie::new(name, value);
     cookie.set_http_only(true);
-    cookie.set_secure(secure);
-    cookie.set_same_site(tower_cookies::cookie::SameSite::Lax);
+    // cross_site (SameSite=None) requires Secure; secure flag is additive.
+    cookie.set_secure(secure || cross_site);
+    cookie.set_same_site(if cross_site {
+        tower_cookies::cookie::SameSite::None
+    } else {
+        tower_cookies::cookie::SameSite::Lax
+    });
     cookie.set_path("/");
     cookie.set_max_age(tower_cookies::cookie::time::Duration::seconds(max_age_secs));
     cookie
 }
 
-pub fn make_csrf_cookie(value: String, secure: bool) -> Cookie<'static> {
+pub fn make_csrf_cookie(value: String, secure: bool, cross_site: bool) -> Cookie<'static> {
     let mut cookie = Cookie::new(CSRF_COOKIE, value);
     cookie.set_http_only(false);
-    cookie.set_secure(secure);
-    cookie.set_same_site(tower_cookies::cookie::SameSite::Lax);
+    cookie.set_secure(secure || cross_site);
+    cookie.set_same_site(if cross_site {
+        tower_cookies::cookie::SameSite::None
+    } else {
+        tower_cookies::cookie::SameSite::Lax
+    });
     cookie.set_path("/");
     cookie.set_max_age(tower_cookies::cookie::time::Duration::seconds(300));
     cookie
