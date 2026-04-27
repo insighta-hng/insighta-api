@@ -234,20 +234,25 @@ pub fn generate_csrf_token() -> String {
     hex::encode(bytes)
 }
 
-pub fn make_http_only_cookie<'a>(name: &'a str, value: String, max_age_secs: i64) -> Cookie<'a> {
+pub fn make_http_only_cookie<'a>(
+    name: &'a str,
+    value: String,
+    max_age_secs: i64,
+    secure: bool,
+) -> Cookie<'a> {
     let mut cookie = Cookie::new(name, value);
     cookie.set_http_only(true);
-    cookie.set_secure(false);
+    cookie.set_secure(secure);
     cookie.set_same_site(tower_cookies::cookie::SameSite::Lax);
     cookie.set_path("/");
     cookie.set_max_age(tower_cookies::cookie::time::Duration::seconds(max_age_secs));
     cookie
 }
 
-pub fn make_csrf_cookie(value: String) -> Cookie<'static> {
+pub fn make_csrf_cookie(value: String, secure: bool) -> Cookie<'static> {
     let mut cookie = Cookie::new(CSRF_COOKIE, value);
     cookie.set_http_only(false);
-    cookie.set_secure(false);
+    cookie.set_secure(secure);
     cookie.set_same_site(tower_cookies::cookie::SameSite::Lax);
     cookie.set_path("/");
     cookie.set_max_age(tower_cookies::cookie::time::Duration::seconds(300));
