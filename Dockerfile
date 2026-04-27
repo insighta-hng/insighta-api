@@ -1,6 +1,5 @@
-FROM rust:1.91-slim-bookworm AS builder
+FROM rust:1.85-slim-bookworm AS builder
 
-# Install build dependencies
 RUN apt-get update && apt-get install -y \
     pkg-config \
     ca-certificates \
@@ -9,27 +8,22 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copy manifests
 COPY Cargo.toml Cargo.lock ./
 
-# Create dummy src for dependency caching
 RUN mkdir src && \
     echo "fn main() {}" > src/main.rs && \
     echo "pub fn dummy() {}" > src/lib.rs
 
-# Build dependencies only
 RUN cargo build --release || true
-RUN rm -rf target/release/.fingerprint/stage2-* \
-    target/release/deps/stage2* \
-    target/release/deps/libstage2*
+RUN rm -rf target/release/.fingerprint/insighta_api-* \
+    target/release/deps/insighta_api* \
+    target/release/deps/libinsighta_api*
 
-# Copy source code
 COPY src ./src
+COPY seed_profiles.json ./
 
-# Build the actual application
 RUN cargo build --release
 
-# Runtime image
 FROM debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y \
@@ -39,11 +33,11 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copy binary from builder
-COPY --from=builder /app/target/release/stage2 /app/stage2
+COPY --from=builder /app/target/release/insighta_api /app/insighta_api
+COPY --from=builder /app/seed_profiles.json /app/seed_profiles.json
 
 ENV RUST_LOG=info
 
 EXPOSE 8000
 
-ENTRYPOINT ["/app/stage2"]
+ENTRYPOINT ["/app/insighta_api"]

@@ -10,6 +10,7 @@ pub struct AppConfig {
     pub jwt_secret: String,
     pub admin_github_ids: String,
     pub secure_cookies: bool,
+    pub cross_site_cookies: bool,
     pub server_port: u16,
 }
 
@@ -30,6 +31,9 @@ impl AppConfig {
                 .map_err(|_| AppError::InternalServerError("JWT_SECRET is required".into()))?,
             admin_github_ids: std::env::var("ADMIN_GITHUB_IDS").unwrap_or_default(),
             secure_cookies: std::env::var("SECURE_COOKIES")
+                .map(|v| v == "true" || v == "1")
+                .unwrap_or(false),
+            cross_site_cookies: std::env::var("CROSS_SITE_COOKIES")
                 .map(|v| v == "true" || v == "1")
                 .unwrap_or(false),
             server_port: std::env::var("PORT")
