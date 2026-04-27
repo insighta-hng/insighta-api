@@ -20,6 +20,18 @@ pub async fn csrf_protection(req: Request, next: Next) -> Response {
         return next.run(req).await;
     }
 
+    // Bearer-authenticated requests are not CSRF-vulnerable — skip the check.
+    let has_bearer = req
+        .headers()
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|val| val.to_str().ok())
+        .map(|val| val.starts_with("Bearer "))
+        .unwrap_or(false);
+
+    if has_bearer {
+        return next.run(req).await;
+    }
+
     let cookies = req.extensions().get::<Cookies>().cloned();
     let csrf_cookie = cookies
         .as_ref()
