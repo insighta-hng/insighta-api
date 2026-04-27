@@ -54,11 +54,12 @@ pub fn validate_name(name_value: Option<Value>) -> Result<String> {
 
 pub async fn fetch_gender_data(
     reqwest_client: &ReqwestClient,
+    url: &str,
     name: &str,
 ) -> Result<GenderizeResponse> {
     let client = reqwest_client.get();
     let response: GenderizeResponse = client
-        .get("https://api.genderize.io")
+        .get(url)
         .query(&[("name", name)])
         .send()
         .await?
@@ -72,10 +73,14 @@ pub async fn fetch_gender_data(
     Ok(response)
 }
 
-pub async fn fetch_age_data(reqwest_client: &ReqwestClient, name: &str) -> Result<AgifyResponse> {
+pub async fn fetch_age_data(
+    reqwest_client: &ReqwestClient,
+    url: &str,
+    name: &str,
+) -> Result<AgifyResponse> {
     let client = reqwest_client.get();
     let mut response: AgifyResponse = client
-        .get("https://api.agify.io")
+        .get(url)
         .query(&[("name", name)])
         .send()
         .await?
@@ -93,11 +98,12 @@ pub async fn fetch_age_data(reqwest_client: &ReqwestClient, name: &str) -> Resul
 
 pub async fn fetch_country_data(
     reqwest_client: &ReqwestClient,
+    url: &str,
     name: &str,
 ) -> Result<NationalizeResponse> {
     let client = reqwest_client.get();
     let response: NationalizeRawResponse = client
-        .get("https://api.nationalize.io")
+        .get(url)
         .query(&[("name", name)])
         .send()
         .await?
@@ -125,8 +131,8 @@ pub async fn fetch_github_primary_email(state: &AppState, github_token: &str) ->
     let emails: Vec<EmailEntry> = state
         .client
         .get()
-        .get("https://api.github.com/user/emails")
-        .header("Authorization", format!("Bearer {}", github_token))
+        .get(&state.config.github_emails_url)
+        .header("Authorization", format!("Bearer {github_token}"))
         .header("User-Agent", "insighta-api")
         .send()
         .await
