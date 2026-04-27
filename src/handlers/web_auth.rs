@@ -166,12 +166,28 @@ pub async fn web_exchange(
 
 /// GET /auth/me
 ///
-/// Returns the current user's info from the access token cookie.
-pub async fn me(State(state): State<AppState>, cookies: Cookies) -> Result<impl IntoResponse> {
-    let token = cookies
-        .get(ACCESS_COOKIE)
-        .map(|c| c.value().to_string())
-        .ok_or_else(|| AppError::Unauthorized("Not authenticated".to_string()))?;
+/// Returns the current user's info from the access token cookie or Bearer token.
+pub async fn me(
+    State(state): State<AppState>,
+    cookies: Cookies,
+    headers: axum::http::HeaderMap,
+) -> Result<impl IntoResponse> {
+    let token = {
+        let bearer = headers
+            .get(axum::http::header::AUTHORIZATION)
+            .and_then(|val| val.to_str().ok())
+            .and_then(|val| val.strip_prefix("Bearer "))
+            .map(|token| token.to_string());
+
+        if let Some(token) = bearer {
+            token
+        } else {
+            cookies
+                .get(ACCESS_COOKIE)
+                .map(|c| c.value().to_string())
+                .ok_or_else(|| AppError::Unauthorized("Not authenticated".to_string()))?
+        }
+    };
 
     let claims = crate::auth::tokens::validate_access_token(&token, &state.config.jwt_secret)?;
 
