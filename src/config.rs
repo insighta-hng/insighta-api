@@ -10,6 +10,7 @@ pub struct AppConfig {
     pub jwt_secret: String,
     pub admin_github_ids: String,
     pub secure_cookies: bool,
+    pub server_port: u16,
 }
 
 impl AppConfig {
@@ -31,6 +32,10 @@ impl AppConfig {
             secure_cookies: std::env::var("SECURE_COOKIES")
                 .map(|v| v == "true" || v == "1")
                 .unwrap_or(false),
+            server_port: std::env::var("PORT")
+                .ok()
+                .and_then(|v| v.parse::<u16>().ok())
+                .unwrap_or(8000),
         })
     }
 }
