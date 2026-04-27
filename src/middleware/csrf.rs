@@ -6,9 +6,7 @@ use axum::{
 };
 use tower_cookies::Cookies;
 
-use crate::errors::AppError;
-
-const CSRF_COOKIE: &str = "csrf_token";
+use crate::{errors::AppError, utils::CSRF_COOKIE};
 const CSRF_HEADER: &str = "x-csrf-token";
 
 /// Validates the CSRF double-submit cookie pattern on mutating requests.
