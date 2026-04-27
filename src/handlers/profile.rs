@@ -60,9 +60,9 @@ pub async fn create_profile(
     }
 
     let (gender_res, age_res, country_res) = tokio::try_join!(
-        fetch_gender_data(&state.client, &name),
-        fetch_age_data(&state.client, &name),
-        fetch_country_data(&state.client, &name)
+        fetch_gender_data(&state.client, &state.config.genderize_url, &name),
+        fetch_age_data(&state.client, &state.config.agify_url, &name),
+        fetch_country_data(&state.client, &state.config.nationalize_url, &name)
     )?;
 
     let new_profile = Profile {

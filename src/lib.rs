@@ -48,6 +48,7 @@ pub fn create_app(state: AppState) -> axum::Router {
             axum::http::HeaderName::from_static("x-api-version"),
             axum::http::HeaderName::from_static("x-csrf-token"),
         ])
+        .expose_headers(vec![axum::http::header::CONTENT_DISPOSITION])
         .allow_credentials(true);
 
     let auth_rate_store = state.auth_rate_limit.clone();

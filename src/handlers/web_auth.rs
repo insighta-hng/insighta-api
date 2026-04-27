@@ -68,7 +68,7 @@ pub async fn web_exchange(
     let token_res: GithubTokenResponse = state
         .client
         .get()
-        .post("https://github.com/login/oauth/access_token")
+        .post(&state.config.github_token_url)
         .header("Accept", "application/json")
         .form(&form_params)
         .send()
@@ -91,7 +91,7 @@ pub async fn web_exchange(
     let github_user: GithubUser = state
         .client
         .get()
-        .get("https://api.github.com/user")
+        .get(&state.config.github_user_url)
         .header("Authorization", format!("Bearer {github_token}"))
         .header("User-Agent", "insighta-api")
         .send()
