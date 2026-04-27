@@ -190,7 +190,10 @@ pub async fn github_callback(
         avatar_url: github_user.avatar_url,
     };
 
-    let user = state.user_repo.upsert(&info).await?;
+    let user = state
+        .user_repo
+        .upsert(&info, &state.config.admin_github_ids)
+        .await?;
 
     if !user.is_active {
         return Err(AppError::Forbidden(

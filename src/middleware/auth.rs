@@ -16,11 +16,31 @@ pub async fn require_auth(
     mut req: Request,
     next: Next,
 ) -> Response {
-    let token = match extract_bearer_token(&req) {
-        Some(val) => val,
-        None => {
-            return AppError::Unauthorized("Authorization header missing or malformed".to_string())
+    let token = if let Some(val) = extract_bearer_token(&req) {
+        val
+    } else {
+        // Fallback to cookie for web clients
+        let cookies = req
+            .extensions()
+            .get::<tower_cookies::Cookies>()
+            .cloned()
+            .ok_or_else(|| AppError::Unauthorized("Authorization missing".to_string()));
+
+        let cookie_token = match cookies {
+            Ok(cookie) => cookie
+                .get("access_token")
+                .map(|cookie| cookie.value().to_string()),
+            Err(_) => None,
+        };
+
+        match cookie_token {
+            Some(t) => t,
+            None => {
+                return AppError::Unauthorized(
+                    "Authorization header missing or malformed".to_string(),
+                )
                 .into_response();
+            }
         }
     };
 

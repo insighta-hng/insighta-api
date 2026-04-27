@@ -21,6 +21,7 @@ async fn main() -> Result<()> {
     initialize_tracing()?;
 
     let config = AppConfig::from_env()?;
+    let server_port = config.server_port;
 
     let reqwest_client = ReqwestClient::init()?;
 
@@ -69,9 +70,9 @@ async fn main() -> Result<()> {
 
     let app = create_app(state);
 
-    let listener = TcpListener::bind("0.0.0.0:8000").await?;
+    let listener = TcpListener::bind(format!("0.0.0.0:{}", server_port)).await?;
 
-    tracing::info!("Server running on port 8000");
+    tracing::info!("Server running on port {}", server_port);
 
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())

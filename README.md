@@ -1,352 +1,475 @@
-# HNG Stage 2: Profile Intelligence API
+![Rust](https://img.shields.io/badge/Rust-1.85+-orange?logo=rust)
+![Axum](https://img.shields.io/badge/Axum-0.8-blue)
+![MongoDB](https://img.shields.io/badge/MongoDB-Atlas-green?logo=mongodb)
+![License](https://img.shields.io/badge/License-MIT-lightgrey)
 
-A name classification and demographic intelligence service built with Rust. Integrates three external APIs (Genderize, Agify, Nationalize), persists results in MongoDB, and exposes a filterable, sortable, paginated REST API with a natural language search endpoint.
+# Insighta Labs+ — Backend API
+
+REST API powering the Insighta Labs+ profile intelligence platform, built with Rust and Axum. It classifies names into demographic profiles by calling three external APIs (Genderize, Agify, Nationalize) and persisting results in MongoDB Atlas. All endpoints are secured with GitHub OAuth + PKCE, serving two client types from a single backend: a CLI (Bearer token) and a web portal (HTTP-only cookies).
 
 ---
 
 ## Stack
 
-- **Runtime**: Rust (Tokio async runtime)
-- **Web framework**: Axum
-- **Database**: MongoDB Atlas
-- **HTTP client**: Reqwest
-- **Serialization**: Serde / serde_json
-- **Observability**: tracing + tracing-subscriber (structured JSON logs)
+| Layer         | Tool                           | Purpose                                  |
+| ------------- | ------------------------------ | ---------------------------------------- |
+| Runtime       | Rust 1.85+ (edition 2024)      | —                                        |
+| Web           | Axum 0.8                       | Routing, middleware, extractors          |
+| Database      | MongoDB Atlas                  | Profiles, users, refresh tokens          |
+| Auth          | jsonwebtoken + tower-cookies   | JWT signing, HTTP-only cookie management |
+| HTTP client   | Reqwest                        | External API calls + GitHub OAuth        |
+| Observability | tracing + tracing-subscriber   | Structured JSON logs                     |
 
 ---
 
-## Requirements
+## Setup
 
-- Rust 1.85+ (edition 2024)
-- Cargo
-- MongoDB Atlas cluster (or local `mongod`)
+### GitHub OAuth App
+
+1. Go to **GitHub → Settings → Developer Settings → OAuth Apps → New OAuth App**.
+2. Set the following fields:
+   - **Application name**: Insighta Labs (or any name)
+   - **Homepage URL**: your deployed app URL, or `http://localhost:8000` for local dev
+   - **Authorization callback URL**: `http://localhost:5173/callback` for local web dev; add your production web URL for deployment
+3. Click **Register application**, then copy the **Client ID**.
+4. Click **Generate a new client secret** and copy it immediately — it is not shown again.
+5. Set `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` in your `.env`.
+
+For the CLI callback (`http://localhost:8182/callback`), GitHub allows multiple callback URLs per OAuth App — add it under **Callback URLs** in the app settings.
+
+> You can use a single OAuth App for both CLI and web development. For production, separate apps per client give finer-grained control.
+
+### Admin ID Setup
+
+Admin role is granted by GitHub **numeric user ID**, not by username. To find a GitHub user's numeric ID:
+
+```bash
+curl https://api.github.com/users/<github-username> | grep '"id"'
+# → "id": 12345678
+```
+
+Set one or more IDs in `.env`:
+
+```env
+ADMIN_GITHUB_IDS=12345678
+ADMIN_GITHUB_IDS=12345678,87654321   # multiple admins
+```
+
+Role assignment is evaluated on **every login** — adding or removing an ID takes effect the next time that user signs in, with no server restart required.
 
 ---
 
-## Local Setup
+## Quick Start
 
-1. Clone the repository and install dependencies:
-
-   ```bash
-   cargo build
-   ```
-
-2. Create a `.env` file in the project root:
-
-   ```env
-   DATABASE_URL=mongodb+srv://<user>:<password>@<cluster>.mongodb.net/?retryWrites=true&w=majority
-   DATABASE_NAME=test
-   ```
-
-3. Run the server:
-
-   ```bash
-   cargo run
-   ```
-
-   The server binds to `0.0.0.0:8000`.
+```bash
+git clone <repo> && cd insighta-api
+cp .env.example .env   # fill in values
+cargo run
+# → Server on http://0.0.0.0:8000
+```
 
 ---
 
-## Data Seeding
+## Environment Variables
 
-On startup, the application runs a non-blocking background seeder. It reads from `seed_profiles.json` and inserts any missing records into MongoDB idempotently. If the database is already fully seeded, it skips the operation entirely.
+| Variable               | Required | Default                     | Description                                       |
+| ---------------------- | :------: | --------------------------- | ------------------------------------------------- |
+| `DATABASE_URL`         |          | `mongodb://localhost:27017` | MongoDB connection string                         |
+| `DATABASE_NAME`        |          | `stage2`                    | Database name                                     |
+| `GITHUB_CLIENT_ID`     | ✅       | —                           | GitHub OAuth App client ID                        |
+| `GITHUB_CLIENT_SECRET` | ✅       | —                           | GitHub OAuth App client secret                    |
+| `GITHUB_REDIRECT_URI`  |          | —                           | OAuth redirect URI (required for CLI flow)        |
+| `JWT_SECRET`           | ✅       | —                           | HMAC secret for signing access tokens             |
+| `ADMIN_GITHUB_IDS`     |          | `""`                        | Comma-separated GitHub numeric user IDs for admin |
+| `PORT`                 |          | `8000`                      | Server bind port                                  |
+| `SECURE_COOKIES`       |          | `false`                     | Set `true` in production (HTTPS-only cookies)     |
+
+> **Note:** `ADMIN_GITHUB_IDS` uses GitHub's numeric user IDs, not usernames. Role assignment is evaluated on every login — changes take effect on the next sign-in without a server restart.
 
 ---
 
 ## Docker
 
 ```bash
-docker build -t profile-api .
-docker run -e DATABASE_URL=<uri> -p 8000:8000 profile-api
+docker build -t insighta-api .
+docker run -p 8000:8000 --env-file .env insighta-api
 ```
+
+---
+
+## Authentication
+
+All auth uses GitHub OAuth 2.0 with PKCE (RFC 7636). No passwords are stored. Two client types share the same flow with different token delivery mechanisms.
+
+### CLI Flow
+
+**Verifier generation**
+
+The CLI derives all parameters locally before the browser opens:
+
+```
+code_verifier  →  32 random bytes, hex-encoded (64 chars)
+code_challenge →  BASE64URL-NOPAD( SHA-256(code_verifier) )
+state          →  16 random bytes, hex-encoded (CSRF token)
+```
+
+**GitHub redirect**
+
+```
+GET /auth/github
+  ?state=<state>
+  &code_challenge=<challenge>
+  &redirect_uri=http://localhost:8182/callback
+```
+
+The backend stores `state → (challenge, redirect_uri)` in memory and issues a redirect to GitHub.
+
+**Callback capture**
+
+GitHub redirects to the CLI's local TCP server. The CLI validates `returned_state == state`, then calls:
+
+```
+GET /auth/github/callback
+  ?code=<code>
+  &state=<state>
+  &code_verifier=<verifier>
+```
+
+**Token exchange**
+
+The backend verifies `BASE64URL(SHA-256(verifier)) == stored_challenge`, exchanges the code with GitHub, upserts the user record, and returns:
+
+```json
+{ "status": "success", "access_token": "...", "refresh_token": "..." }
+```
+
+The CLI decodes the username from the JWT payload and saves credentials to `~/.insighta/credentials.json`.
+
+> The authorization window is 3 minutes. If the local server receives no callback, the flow times out and the user must re-run `insighta login`.
+
+---
+
+### Web Flow
+
+**Verifier generation**
+
+The browser generates the PKCE pair using `crypto.subtle` and stores the verifier in `sessionStorage`:
+
+```
+code_verifier  →  32 random bytes, hex-encoded
+code_challenge →  BASE64URL-NOPAD( SHA-256(code_verifier) )  [via crypto.subtle.digest]
+state          →  crypto.randomUUID(), hyphens stripped
+```
+
+**GitHub redirect**
+
+```
+GET /auth/github
+  ?state=<state>
+  &code_challenge=<challenge>
+  &redirect_uri=<web-origin>/callback
+```
+
+**Callback validation**
+
+The `/callback` page checks `state` against `sessionStorage`, retrieves `code_verifier`, then calls:
+
+```
+POST /auth/web/exchange?code=<code>&state=<state>&code_verifier=<verifier>
+```
+
+**Cookie issuance**
+
+The backend validates PKCE and sets three cookies:
+
+| Cookie          | TTL   | `HttpOnly` | JS-readable      | Purpose                 |
+| --------------- | ----- | :--------: | :--------------: | ----------------------- |
+| `access_token`  | 3 min | ✅         | ❌               | API authentication      |
+| `refresh_token` | 5 min | ✅         | ❌               | Token rotation          |
+| `csrf_token`    | 5 min | ❌         | ✅ (intentional) | CSRF double-submit      |
+
+> `access_token` and `refresh_token` are never readable by JavaScript. The `csrf_token` is intentionally readable so the frontend can attach it as `X-CSRF-Token` on mutating requests.
+
+---
+
+## Token Handling
+
+**Access token**
+
+| Property  | Value                                                                    |
+| --------- | ------------------------------------------------------------------------ |
+| Format    | JWT, signed HS256                                                        |
+| Expiry    | 3 minutes                                                                |
+| Claims    | `sub` (UUID), `role`, `username`, `iat`, `exp`                           |
+| Transport | `Authorization: Bearer <token>` (CLI) / `access_token` cookie (web)     |
+
+**Refresh token**
+
+| Property    | Value                                                                       |
+| ----------- | --------------------------------------------------------------------------- |
+| Format      | 64-char opaque hex string                                                   |
+| Expiry      | 5 minutes                                                                   |
+| Storage     | SHA-256 hash persisted to MongoDB; raw value is never stored                |
+| Auto-expiry | MongoDB TTL index on `expires_at` auto-deletes stale documents              |
+| Consumption | `find_one_and_delete` — one-time use, atomically invalidated on read        |
+
+Each refresh issues a completely new token pair. The old token is invalidated in the same atomic operation that produces the new one. The CLI retries the original request automatically after a successful refresh; the web portal redirects to login if the refresh fails.
+
+---
+
+## Role Enforcement
+
+### Roles
+
+| Role      | Assigned when                              | Permissions                          |
+| --------- | ------------------------------------------ | ------------------------------------ |
+| `admin`   | GitHub ID present in `ADMIN_GITHUB_IDS`    | Create, delete, read, search, export |
+| `analyst` | Default for all other authenticated users  | Read, search, export                 |
+
+### Enforcement Chain
+
+1. `require_auth` middleware validates the Bearer token or cookie, loads the user record, and injects `AuthenticatedUser` into request extensions.
+2. `RequireAny` / `RequireAdmin` extractors on each route read from that extension.
+3. Any user with `is_active = false` receives `403 Forbidden` regardless of role.
 
 ---
 
 ## API Reference
 
-All responses use `Content-Type: application/json`. All timestamps are UTC ISO 8601. All IDs are UUID v7. CORS is open (`Access-Control-Allow-Origin: *`).
+> **All `/api/*` requests require the `X-API-Version: 1` header.** Missing or unrecognised values return `400`.
 
-### Error envelope
+### Auth Endpoints
 
-```json
-{ "status": "error", "message": "<description>" }
-```
+| Method | Path                    | Auth   | Description                                        |
+| ------ | ----------------------- | ------ | -------------------------------------------------- |
+| GET    | `/auth/github`          | —      | Redirect to GitHub OAuth (CLI + web)               |
+| GET    | `/auth/github/callback` | —      | Exchange code, issue access + refresh tokens (CLI) |
+| POST   | `/auth/refresh`         | —      | Rotate refresh token pair                          |
+| POST   | `/auth/logout`          | —      | Invalidate refresh token                           |
+| POST   | `/auth/web/exchange`    | —      | Exchange code, set HTTP-only cookies (web)         |
+| POST   | `/auth/web/refresh`     | CSRF   | Rotate cookie pair                                 |
+| POST   | `/auth/web/logout`      | CSRF   | Clear cookies                                      |
+| GET    | `/auth/me`              | Cookie | Return current user info                           |
 
-| Status | Meaning                             |
-| ------ | ----------------------------------- |
-| 400    | Missing or empty parameter          |
-| 404    | Profile not found                   |
-| 422    | Invalid parameter type              |
-| 502    | External API returned unusable data |
+### Profile Endpoints
 
----
+| Method | Path                    | Role  | Description                               |
+| ------ | ----------------------- | ----- | ----------------------------------------- |
+| GET    | `/api/profiles`         | Any   | List with filters, sorting, pagination    |
+| POST   | `/api/profiles`         | Admin | Create profile (calls 3 external APIs)    |
+| GET    | `/api/profiles/{id}`    | Any   | Single profile by UUID                    |
+| DELETE | `/api/profiles/{id}`    | Admin | Delete profile (`204 No Content`)         |
+| GET    | `/api/profiles/search`  | Any   | Natural language search (`?q=`)           |
+| GET    | `/api/profiles/export`  | Any   | Download CSV (`?format=csv`)              |
 
-### POST /api/profiles
+**`GET /api/profiles` — query parameters:**
 
-Create a profile by name. Calls Genderize, Agify, and Nationalize in parallel, classifies the result, and stores it.
+| Parameter                 | Type    | Default | Description                                       |
+| ------------------------- | ------- | ------- | ------------------------------------------------- |
+| `gender`                  | string  | —       | `male` or `female`                                |
+| `age_group`               | string  | —       | `child`, `teenager`, `adult`, or `senior`         |
+| `country_id`              | string  | —       | ISO 3166-1 alpha-2 (e.g. `NG`)                    |
+| `min_age` / `max_age`     | integer | —       | Inclusive age bounds                              |
+| `min_gender_probability`  | float   | —       | Gender confidence threshold (0.0–1.0)             |
+| `min_country_probability` | float   | —       | Country confidence threshold (0.0–1.0)            |
+| `sort_by`                 | string  | `age`   | `age`, `created_at`, or `gender_probability`      |
+| `order`                   | string  | `asc`   | `asc` or `desc`                                   |
+| `page`                    | integer | `1`     | Page number (1-indexed)                           |
+| `limit`                   | integer | `10`    | Results per page (max 50)                         |
 
-**Request body**
-
-```json
-{ "name": "ella" }
-```
-
-**201 Created** — new profile:
-
-```json
-{
-  "status": "success",
-  "data": {
-    "id": "019571b2-...",
-    "name": "ella",
-    "gender": "female",
-    "gender_probability": 0.99,
-    "age": 46,
-    "age_group": "adult",
-    "country_id": "DK",
-    "country_name": "Denmark",
-    "country_probability": 0.21,
-    "created_at": "2026-04-20T10:00:00Z"
-  }
-}
-```
-
-**200 OK** — name already exists (idempotent):
-
-```json
-{
-  "status": "success",
-  "message": "Profile already exists",
-  "data": { "...existing profile..." }
-}
-```
-
-**Edge cases that return 502 and do not store:**
-
-- Genderize returns `gender: null` or `count: 0`
-- Agify returns `age: null`
-- Nationalize returns an empty country array
-
----
-
-### GET /api/profiles/{id}
-
-Fetch a single profile by UUID.
-
-**200 OK** — returns full profile object as shown above.
-**404** — profile not found.
-
----
-
-### GET /api/profiles
-
-List profiles with optional filtering, sorting, and pagination.
-
-**Query parameters**
-
-| Parameter                 | Type    | Description                                                   |
-| ------------------------- | ------- | ------------------------------------------------------------- |
-| `gender`                  | string  | `male` or `female` (case-insensitive)                         |
-| `age_group`               | string  | `child`, `teenager`, `adult`, `senior` (case-insensitive)     |
-| `country_id`              | string  | ISO 3166-1 alpha-2 code, e.g. `NG` (case-insensitive)         |
-| `min_age`                 | integer | Minimum age (inclusive)                                       |
-| `max_age`                 | integer | Maximum age (inclusive)                                       |
-| `min_gender_probability`  | float   | Minimum gender confidence score                               |
-| `min_country_probability` | float   | Minimum country confidence score                              |
-| `sort_by`                 | string  | `age`, `created_at`, or `gender_probability` (default: `age`) |
-| `order`                   | string  | `asc` or `desc` (default: `asc`)                              |
-| `page`                    | integer | Page number, 1-indexed (default: `1`)                         |
-| `limit`                   | integer | Results per page, max 50 (default: `10`)                      |
-
-All filters are combinable. Every condition must match.
-
-**Example**
-
-```
-GET /api/profiles?gender=male&country_id=NG&min_age=25&sort_by=age&order=desc&page=1&limit=10
-```
-
-**200 OK**
+### Pagination
 
 ```json
 {
   "status": "success",
   "page": 1,
   "limit": 10,
-  "total": 312,
-  "data": [
-    {
-      "id": "...",
-      "name": "emmanuel",
-      "gender": "male",
-      "gender_probability": 0.99,
-      "age": 34,
-      "age_group": "adult",
-      "country_id": "NG",
-      "country_name": "Nigeria",
-      "country_probability": 0.85,
-      "created_at": "2026-04-01T12:00:00Z"
-    }
-  ]
+  "total": 2026,
+  "total_pages": 203,
+  "links": {
+    "self": "/api/profiles?page=1&limit=10",
+    "next": "/api/profiles?page=2&limit=10",
+    "prev": null
+  },
+  "data": [...]
 }
 ```
 
----
+### Error Format
 
-### GET /api/profiles/search?q=
-
-Natural language search. Parses a plain English query into structured filters and runs the same paginated query as `GET /api/profiles`.
-
-Accepts the same `page`, `limit`, `sort_by`, and `order` query parameters. Explicit query parameters override any values inferred from the natural language text.
-
-**Example**
-
-```
-GET /api/profiles/search?q=young males from nigeria&page=1&limit=20
-```
-
-**400 Bad Request** — if the query cannot be interpreted:
+All errors use a consistent envelope:
 
 ```json
-{ "status": "error", "message": "Unable to interpret query" }
+{ "status": "error", "message": "Detailed error message here" }
 ```
 
-See the [Natural Language Parsing](#natural-language-parsing) section for full keyword documentation.
+---
+
+## Natural Language Search
+
+`GET /api/profiles/search?q=<query>` runs a rule-based, single-pass token scanner — no AI. The parser lowercases the input, splits on whitespace, and scans left-to-right to produce structured filters. Explicit query parameters (e.g. `&gender=male`) always override values inferred from the text. Returns `400` if no filter could be parsed.
+
+<details>
+<summary>Keyword reference</summary>
+
+**Gender**
+
+| Tokens                                                                    | Filter          |
+| ------------------------------------------------------------------------- | --------------- |
+| `male`, `males`, `man`, `men`, `boy`, `boys`                              | `gender=male`   |
+| `female`, `females`, `woman`, `women`, `girl`, `girls`, `lady`, `ladies`  | `gender=female` |
+
+> If both gender token groups appear in the same query, the gender filter is dropped entirely.
 
 ---
 
-### DELETE /api/profiles/{id}
+**Age groups**
 
-Delete a profile by UUID. Returns **204 No Content** on success, **404** if not found.
-
----
-
-## Natural Language Parsing
-
-The search endpoint uses a rule-based, single-pass token scanner. There is no AI or LLM involved. The parser lowercases the query, splits on whitespace, and scans the resulting tokens left to right. Each recognized token or bigram (two consecutive tokens) sets one or more filters. Unrecognized tokens are ignored. If no token produces a filter match, the endpoint returns a 400 with `"Unable to interpret query"`.
-
-### Gender keywords
-
-| Keywords                                                                 | Filter set      |
-| ------------------------------------------------------------------------ | --------------- |
-| `male`, `males`, `man`, `men`, `boy`, `boys`                             | `gender=male`   |
-| `female`, `females`, `woman`, `women`, `girl`, `girls`, `lady`, `ladies` | `gender=female` |
-
-If both male and female keywords appear in the same query, the gender filter is dropped and results are not filtered by gender.
-
-### Age group keywords
-
-| Keywords                                                | Filter set                 |
-| ------------------------------------------------------- | -------------------------- |
-| `child`, `children`, `kid`, `kids`                      | `age_group=child`          |
-| `teenager`, `teenagers`, `teen`, `teens`                | `age_group=teenager`       |
-| `adult`, `adults`, `grownup`, `grownups`, `middle-aged` | `age_group=adult`          |
-| `senior`, `seniors`, `old`, `elderly`                   | `age_group=senior`         |
-| `young`                                                 | `min_age=16`, `max_age=24` |
-
-`young` is a special case. It maps to an age range (16–24) rather than a stored age group, and is used for query purposes only. It is not a value that appears in the database.
-
-### Age range keywords
-
-These work as bigrams — the keyword must be followed immediately by a number (either digits or written out, e.g. "20" or "twenty").
-
-| Pattern                        | Filter set  |
-| ------------------------------ | ----------- |
-| `above N`, `over N`, `least N` | `min_age=N` |
-| `below N`, `under N`, `most N` | `max_age=N` |
-
-`least` and `most` are designed to match the trailing word from "at least" and "at most" — the leading "at" is a stop word and is ignored.
-
-### Country keywords
-
-| Pattern                          | Filter set              |
-| -------------------------------- | ----------------------- |
-| `from [country]`, `in [country]` | `country_id=<ISO code>` |
-| Entire query is a country name   | `country_id=<ISO code>` |
-
-Country names are matched against a static ISO 3166-1 lookup table of ~250 entries in a fully case-insensitive manner. The parser scans up to 7 tokens ahead after `from`/`in` to robustly resolve multi-word countries like "United States of America" or "Bosnia and Herzegovina".
-
-### Sort and limit keywords
-
-These also work as bigrams — the keyword must be followed immediately by a number (either digits or written out).
-
-| Pattern                          | Behaviour                                           |
-| -------------------------------- | --------------------------------------------------- |
-| `top N`, `first N`, `latest N`   | Sort by `created_at` descending, limit to N results |
-| `last N`, `oldest N`, `bottom N` | Sort by `created_at` ascending, limit to N results  |
-
-### Example mappings
-
-| Query                                | Filters applied                                    |
-| ------------------------------------ | -------------------------------------------------- |
-| `young males`                        | `gender=male`, `min_age=16`, `max_age=24`          |
-| `females above 30`                   | `gender=female`, `min_age=30`                      |
-| `people from angola`                 | `country_id=AO`                                    |
-| `adult males from kenya`             | `gender=male`, `age_group=adult`, `country_id=KE`  |
-| `male and female teenagers above 17` | `age_group=teenager`, `min_age=17`                 |
-| `top 5 women`                        | `gender=female`, sort `created_at` desc, limit 5   |
-| `elderly men in japan`               | `gender=male`, `age_group=senior`, `country_id=JP` |
-| `nigeria`                            | `country_id=NG`                                    |
-
-### Stop words
-
-Common conversational words (`people`, `person`, `show`, `find`, `give`, `me`, `who`, `are`, `is`, `list`, `all`, `everyone`, `anybody`, `someone`, `with`, `the`, `a`, `an`, `of`, `that`, `have`, `profiles`, `records`, `entries`) are formally identified and safely ignored. Because of this, a purely conversational query containing no demographic filters, such as "show me all people", will correctly return a 400 error (`"Unable to interpret query"`) because no meaningful constraints were parsed.
+| Tokens                                                      | Filter                   |
+| ----------------------------------------------------------- | ------------------------ |
+| `child`, `children`, `kid`, `kids`                          | `age_group=child`        |
+| `teenager`, `teenagers`, `teen`, `teens`                    | `age_group=teenager`     |
+| `adult`, `adults`, `grownup`, `grownups`, `middle-aged`     | `age_group=adult`        |
+| `senior`, `seniors`, `old`, `elderly`                       | `age_group=senior`       |
+| `young`                                                     | `min_age=16, max_age=24` |
 
 ---
 
-## Limitations
+**Age range bigrams** (`keyword N`)
 
-The parser is intentionally rule-based and covers the most common demographic query patterns. The following cases are explicitly not handled.
+| Pattern                          | Filter      |
+| -------------------------------- | ----------- |
+| `above N`, `over N`, `least N`   | `min_age=N` |
+| `below N`, `under N`, `most N`   | `max_age=N` |
 
-**Country matching requires prepositions.** Unless the country name is the _entire_ query (e.g., `q=nigeria`), the parser will only recognize a country if it is immediately preceded by `in` or `from`. A query like "young males in japan" works perfectly, but "young males japan" will fail to parse the country.
+---
 
-**Strict phrasing and bigram ordering.** Age ranges and limit modifiers strictly require the recognized keyword to immediately precede the number. "above 30" works, but "30 and above", "30+", or "older than 30" will not trigger the filter.
+**Country**
 
-**Negation.** "not male", "non-adults", "excluding nigeria" have no effect. The parser has no concept of exclusion.
+`from [country]` or `in [country]` resolves to a `country_id` (ISO 3166-1 α-2). The parser scans up to 7 tokens for multi-word country names. A query that is itself a country name also works (e.g. `nigeria`).
 
-**Probability filters.** There is no natural language support for "high confidence" or "probability above 0.9". Use the `min_gender_probability` and `min_country_probability` query parameters directly.
+---
 
-**Compound country queries.** "from nigeria or kenya" is not supported. Only the first successfully matched country filter is applied.
+**Sort / limit bigrams**
 
-**Conflicting age constraints.** If the query contains both an age group keyword and an explicit age range that falls outside that group (e.g. "adults above 70"), both filters are applied independently to the database query. The result set will be empty because no profile can satisfy `age_group=adult` and `age >= 70` simultaneously. The parser does not validate for semantic conflicts between filters.
+| Pattern                          | Effect                          |
+| -------------------------------- | ------------------------------- |
+| `top N`, `first N`, `latest N`   | sort `created_at` desc, limit N |
+| `last N`, `oldest N`, `bottom N` | sort `created_at` asc, limit N  |
 
-**`young` combined with an explicit age range.** "young males above 20" sets `min_age=16` from "young" and then `min_age=20` from "above 20". The later assignment wins. The word "young" does not constrain `max_age` in this case unless no other age keyword is present.
+---
+
+**Example queries**
+
+| Query                      | Filters applied                                   |
+| -------------------------- | ------------------------------------------------- |
+| `young males`              | `gender=male, min_age=16, max_age=24`             |
+| `females above 30`         | `gender=female, min_age=30`                       |
+| `adult males from kenya`   | `gender=male, age_group=adult, country_id=KE`     |
+| `top 5 women`              | `gender=female, sort created_at desc, limit 5`    |
+| `nigeria`                  | `country_id=NG`                                   |
+
+</details>
+
+---
+
+## Rate Limiting
+
+| Scope     | Limit      | Key                    |
+| --------- | ---------- | ---------------------- |
+| `/auth/*` | 10 req/min | IP (`X-Forwarded-For`) |
+| `/api/*`  | 60 req/min | Authenticated user ID  |
+
+Returns `429 Too Many Requests` when the limit is exceeded.
+
+---
+
+## CSRF Protection
+
+Web SPA mutating requests use a **double-submit cookie pattern**:
+
+1. On login, the backend sets a readable `csrf_token` cookie alongside the HTTP-only auth cookies (5-minute TTL).
+2. The frontend reads `csrf_token` from `document.cookie` and sends it as the `X-CSRF-Token` request header.
+3. The backend validates the header value against the cookie before processing `POST /auth/web/refresh` and `POST /auth/web/logout`.
+4. `GET`, `HEAD`, and `OPTIONS` requests bypass the check entirely.
+
+> Because `csrf_token` is tied to a specific session and unreadable cross-origin (same-origin policy), forged requests from other origins cannot supply a valid token.
+
+---
+
+## API Versioning
+
+All `/api/*` requests must include:
+
+```
+X-API-Version: 1
+```
+
+Missing or unrecognised headers return:
+
+```json
+{ "status": "error", "message": "API version header required" }
+```
 
 ---
 
 ## Database Schema
 
-| Field                 | Type            | Notes                                     |
-| --------------------- | --------------- | ----------------------------------------- |
-| `id`                  | UUID v7         | Primary key                               |
-| `name`                | string (unique) | Person's name                             |
-| `gender`              | string          | `male` or `female`                        |
-| `gender_probability`  | float           | Rounded to 2 decimal places               |
-| `age`                 | integer         |                                           |
-| `age_group`           | string          | `child`, `teenager`, `adult`, or `senior` |
-| `country_id`          | string          | ISO 3166-1 alpha-2 code                   |
-| `country_name`        | string          | Full country name                         |
-| `country_probability` | float           | Rounded to 2 decimal places               |
-| `created_at`          | string          | UTC ISO 8601                              |
+### `users` collection
 
-**Age group classification:**
+| Field           | Type     | Notes                                |
+| --------------- | -------- | ------------------------------------ |
+| `id`            | UUID v7  | Primary key                          |
+| `github_id`     | integer  | Unique; GitHub's numeric user ID     |
+| `username`      | string   | GitHub login handle                  |
+| `email`         | string   | May be `null` if hidden on GitHub    |
+| `avatar_url`    | string   | GitHub avatar URL                    |
+| `role`          | string   | `admin` or `analyst`                 |
+| `is_active`     | bool     | `false` disables all access          |
+| `last_login_at` | datetime | Updated on every successful login    |
+| `created_at`    | datetime | Set at first upsert                  |
 
-| Range | Group    |
-| ----- | -------- |
-| 0–12  | child    |
-| 13–19 | teenager |
-| 20–59 | adult    |
-| 60+   | senior   |
+Indexes: unique on `id`, unique on `github_id`.
 
-**Indexes:**
+### `refresh_tokens` collection
 
-- Unique on `id`
-- Unique on `name`
-- Compound on `(country_id, gender, age_group)` for filter queries
-- Single on `age` for range queries
-- Single on `created_at` for sort
-- Single on `gender_probability` for sort and probability filter
-- Single on `country_probability` for probability filter
+| Field        | Type     | Notes                                               |
+| ------------ | -------- | --------------------------------------------------- |
+| `token_hash` | string   | SHA-256 of the raw token; raw value is never stored |
+| `user_id`    | UUID v7  | Foreign key to `users.id`                           |
+| `expires_at` | datetime | MongoDB TTL index; document auto-deleted on expiry  |
+
+Indexes: unique on `token_hash`, TTL on `expires_at`.
+
+### `profiles` collection
+
+| Field                 | Type     | Notes                                     |
+| --------------------- | -------- | ----------------------------------------- |
+| `id`                  | UUID v7  | Primary key                               |
+| `name`                | string   | Unique                                    |
+| `gender`              | string   | `male` or `female`                        |
+| `gender_probability`  | float    | Rounded to 2 decimal places               |
+| `age`                 | integer  | —                                         |
+| `age_group`           | string   | `child`, `teenager`, `adult`, or `senior` |
+| `country_id`          | string   | ISO 3166-1 alpha-2                        |
+| `country_name`        | string   | Full country name                         |
+| `country_probability` | float    | Rounded to 2 decimal places               |
+| `created_at`          | datetime | UTC                                       |
+
+Age group classification: 0–12 → `child`, 13–19 → `teenager`, 20–59 → `adult`, 60+ → `senior`.
+
+Indexes: unique on `id`, unique on `name`, compound on `(country_id, gender, age_group)`, single on `age`, `created_at`, `gender_probability`, `country_probability`.
 
 ---
+
+## CLI Companion
+
+The `insighta-cli` is a separate companion tool at [insighta-labs/insighta-cli](https://github.com/insighta-labs/insighta-cli). It communicates with this API using Bearer token auth and stores credentials at `~/.insighta/credentials.json`. Refer to that repository for installation instructions and the full command reference.
+
+---
+
+## Contributing & License
+
+Contributions are welcome via pull request. Please open an issue first for significant changes.
+
+Licensed under the [MIT License](LICENSE).
