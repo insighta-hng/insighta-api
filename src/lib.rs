@@ -122,6 +122,7 @@ pub fn create_app(state: AppState) -> axum::Router {
             api_rate_store,
             middleware::rate_limit::api_rate_limit,
         ))
+        .layer(axum::middleware::from_fn(middleware::csrf::csrf_protection))
         .layer(axum::middleware::from_fn_with_state(
             auth_middleware_state,
             middleware::auth::require_auth,
