@@ -44,7 +44,7 @@ pub fn issue_access_token(
         &claims,
         &EncodingKey::from_secret(secret.as_bytes()),
     )
-    .map_err(|e| AppError::InternalServerError(format!("Failed to sign token: {}", e)))
+    .map_err(|e| AppError::InternalServerError(format!("Failed to sign token: {e}")))
 }
 
 pub fn validate_access_token(token: &str, secret: &str) -> Result<Claims> {

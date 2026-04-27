@@ -55,10 +55,7 @@ impl RefreshTokenRepo {
             .create_indexes(vec![ttl_index, token_index])
             .await
             .map_err(|e| {
-                AppError::ServiceUnavailable(format!(
-                    "Failed to create refresh token indexes: {}",
-                    e
-                ))
+                AppError::ServiceUnavailable(format!("Failed to create refresh token indexes: {e}"))
             })?;
 
         tracing::info!("Refresh token indexes verified");
@@ -69,7 +66,7 @@ impl RefreshTokenRepo {
         self.collection
             .insert_one(token)
             .await
-            .map_err(|e| AppError::ServiceUnavailable(format!("DB Insert Error: {}", e)))?;
+            .map_err(|e| AppError::ServiceUnavailable(format!("DB Insert Error: {e}")))?;
         Ok(())
     }
 
@@ -80,7 +77,7 @@ impl RefreshTokenRepo {
             .collection
             .find_one_and_delete(bson::doc! { "token": &token_hash })
             .await
-            .map_err(|e| AppError::ServiceUnavailable(format!("DB Delete Error: {}", e)))?;
+            .map_err(|e| AppError::ServiceUnavailable(format!("DB Delete Error: {e}")))?;
 
         match doc {
             None => Ok(None),
@@ -101,7 +98,7 @@ impl RefreshTokenRepo {
         self.collection
             .delete_many(bson::doc! { "user_id": bson::Uuid::from(user_id) })
             .await
-            .map_err(|e| AppError::ServiceUnavailable(format!("DB Delete Error: {}", e)))?;
+            .map_err(|e| AppError::ServiceUnavailable(format!("DB Delete Error: {e}")))?;
         Ok(())
     }
 }
