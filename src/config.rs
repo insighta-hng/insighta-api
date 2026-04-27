@@ -12,6 +12,12 @@ pub struct AppConfig {
     pub secure_cookies: bool,
     pub cross_site_cookies: bool,
     pub server_port: u16,
+    pub github_token_url: String,
+    pub github_user_url: String,
+    pub github_emails_url: String,
+    pub genderize_url: String,
+    pub agify_url: String,
+    pub nationalize_url: String,
 }
 
 impl AppConfig {
@@ -40,6 +46,17 @@ impl AppConfig {
                 .ok()
                 .and_then(|v| v.parse::<u16>().ok())
                 .unwrap_or(8000),
+            github_token_url: std::env::var("GITHUB_TOKEN_URL")
+                .unwrap_or_else(|_| "https://github.com/login/oauth/access_token".into()),
+            github_user_url: std::env::var("GITHUB_USER_URL")
+                .unwrap_or_else(|_| "https://api.github.com/user".into()),
+            github_emails_url: std::env::var("GITHUB_EMAILS_URL")
+                .unwrap_or_else(|_| "https://api.github.com/user/emails".into()),
+            genderize_url: std::env::var("GENDERIZE_URL")
+                .unwrap_or_else(|_| "https://api.genderize.io".into()),
+            agify_url: std::env::var("AGIFY_URL").unwrap_or_else(|_| "https://api.agify.io".into()),
+            nationalize_url: std::env::var("NATIONALIZE_URL")
+                .unwrap_or_else(|_| "https://api.nationalize.io".into()),
         })
     }
 }
