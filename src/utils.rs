@@ -174,28 +174,22 @@ pub fn build_list_response(
 
     let extra: String = extra_params
         .iter()
-        .map(|(k, v)| format!("&{}={}", k, v))
+        .map(|(k, v)| format!("&{k}={v}"))
         .collect();
 
-    let self_ = format!("{}?page={}&limit={}{}", base_path, page, limit, extra);
+    let self_ = format!("{base_path}?page={page}&limit={limit}{extra}");
     let next = if (page as u64) < total_pages {
         Some(format!(
-            "{}?page={}&limit={}{}",
-            base_path,
-            page + 1,
-            limit,
-            extra
+            "{base_path}?page={}&limit={limit}{extra}",
+            page + 1
         ))
     } else {
         None
     };
     let prev = if page > 1 {
         Some(format!(
-            "{}?page={}&limit={}{}",
-            base_path,
-            page - 1,
-            limit,
-            extra
+            "{base_path}?page={}&limit={limit}{extra}",
+            page - 1
         ))
     } else {
         None
