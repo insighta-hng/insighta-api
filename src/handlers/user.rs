@@ -27,7 +27,15 @@ pub async fn get_current_user(
             github_id: user.github_id.clone(),
             username: user.username.clone(),
             full_name: user.username,
+<<<<<<< HEAD
             first_name,
+=======
+<<<<<<< HEAD
+            first_name,
+=======
+            first_name: first_name,
+>>>>>>> 6729c55a91e9f87b6b6a3fdbdf783521c2393d2c
+>>>>>>> fe9db62251e994c0d7c9d08942642fd195cf5b57
             last_name,
             email: user.email,
             avatar_url: user.avatar_url,
