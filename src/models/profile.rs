@@ -1,8 +1,36 @@
-use crate::{models::gender::Gender, repo::profile::Profile};
+use crate::models::gender::Gender;
 use chrono::{DateTime, Utc};
+use mongodb::bson;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct Profile {
+    #[serde(rename = "_id", with = "bson::serde_helpers::uuid_1_as_binary")]
+    pub id: Uuid,
+    pub name: String,
+    pub gender: Gender,
+    pub gender_probability: f64,
+    pub age: u8,
+    pub age_group: String,
+    pub country_id: String,
+    pub country_name: String,
+    pub country_probability: f64,
+    #[serde(with = "bson::serde_helpers::chrono_datetime_as_bson_datetime")]
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct ProfileFilters {
+    pub gender: Option<Gender>,
+    pub country_id: Option<String>,
+    pub age_group: Option<String>,
+    pub min_age: Option<u8>,
+    pub max_age: Option<u8>,
+    pub min_gender_probability: Option<f64>,
+    pub min_country_probability: Option<f64>,
+}
 
 #[derive(Debug, Deserialize)]
 pub struct CreateProfileRequest {

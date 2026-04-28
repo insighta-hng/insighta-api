@@ -37,13 +37,12 @@ impl RateLimitStore {
     }
 
     fn check_limit_status(&self, key: &str, limit: u32) -> bool {
-        let mut map = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        let mut map = self.inner.lock().unwrap_or_else(|err| err.into_inner());
         let now = Instant::now();
 
         match map.get_mut(key) {
             Some(window) => {
                 if now.duration_since(window.started_at) >= WINDOW {
-                    // Window expired — reset.
                     *window = Window {
                         count: 1,
                         started_at: now,
@@ -84,9 +83,9 @@ pub async fn auth_rate_limit(
     let ip = req
         .headers()
         .get("x-forwarded-for")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.split(',').next())
-        .map(|s| s.trim().to_string())
+        .and_then(|val| val.to_str().ok())
+        .and_then(|val| val.split(',').next())
+        .map(|ip_str| ip_str.trim().to_string())
         .unwrap_or_else(|| "unknown".to_string());
 
     if !store.check_limit_status(&ip, AUTH_LIMIT) {
@@ -104,7 +103,7 @@ pub async fn api_rate_limit(
     let user_id = req
         .extensions()
         .get::<AuthenticatedUser>()
-        .map(|u| u.id.to_string())
+        .map(|user| user.id.to_string())
         .unwrap_or_else(|| "anonymous".to_string());
 
     if !store.check_limit_status(&user_id, API_LIMIT) {

@@ -1,4 +1,16 @@
+use chrono::{DateTime, Utc};
+use mongodb::bson;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RefreshToken {
+    pub token: String,
+    #[serde(with = "bson::serde_helpers::uuid_1_as_binary")]
+    pub user_id: Uuid,
+    #[serde(with = "bson::serde_helpers::chrono_datetime_as_bson_datetime")]
+    pub expires_at: DateTime<Utc>,
+}
 
 use crate::{models::user::Role, repo::user::UserRepo};
 

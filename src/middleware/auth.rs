@@ -34,7 +34,7 @@ pub async fn require_auth(
         };
 
         match cookie_token {
-            Some(t) => t,
+            Some(token) => token,
             None => {
                 return AppError::Unauthorized(
                     "Authorization header missing or malformed".to_string(),
@@ -62,7 +62,7 @@ pub async fn require_auth(
     };
 
     let user = match auth_state.user_repo.find_by_id(user_id).await {
-        Ok(Some(u)) => u,
+        Ok(Some(user)) => user,
         Ok(None) => {
             return AppError::Unauthorized("User no longer exists".to_string()).into_response();
         }

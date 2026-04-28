@@ -2,9 +2,8 @@ use crate::countries::COUNTRIES_LOWER;
 use crate::errors::{AppError, Result};
 use crate::models::{
     gender::Gender,
-    profile::{SearchQuery, SortBy, SortOrder},
+    profile::{ProfileFilters, SearchQuery, SortBy, SortOrder},
 };
-use crate::repo::profile::ProfileFilters;
 
 /// Parses a natural language search query into structured database filters.
 ///
@@ -87,7 +86,7 @@ pub fn parse_query(search_query: &str) -> Result<(ProfileFilters, SearchQuery)> 
                 }
             }
             "last" | "oldest" | "bottom" => {
-                if let Some(num) = tokens.get(idx + 1).and_then(|t| parse_number(t)) {
+                if let Some(num) = tokens.get(idx + 1).and_then(|token| parse_number(token)) {
                     sort_order = SortOrder::Asc;
                     sort_by = SortBy::CreatedAt;
                     search_limit = num;

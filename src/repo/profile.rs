@@ -1,47 +1,15 @@
-use chrono::{DateTime, Utc};
 use futures::stream::TryStreamExt;
 use mongodb::{
     Collection, Database, IndexModel, bson,
     error::{ErrorKind, WriteFailure},
     options::IndexOptions,
 };
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
     errors::{AppError, Result},
-    models::{
-        gender::Gender,
-        profile::{SortBy, SortOrder},
-    },
+    models::profile::{Profile, ProfileFilters, SortBy, SortOrder},
 };
-
-#[derive(Debug, Deserialize, Serialize, Clone)]
-pub struct Profile {
-    #[serde(rename = "_id", with = "bson::serde_helpers::uuid_1_as_binary")]
-    pub id: Uuid,
-    pub name: String,
-    pub gender: Gender,
-    pub gender_probability: f64,
-    pub age: u8,
-    pub age_group: String,
-    pub country_id: String,
-    pub country_name: String,
-    pub country_probability: f64,
-    #[serde(with = "bson::serde_helpers::chrono_datetime_as_bson_datetime")]
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Default)]
-pub struct ProfileFilters {
-    pub gender: Option<Gender>,
-    pub country_id: Option<String>,
-    pub age_group: Option<String>,
-    pub min_age: Option<u8>,
-    pub max_age: Option<u8>,
-    pub min_gender_probability: Option<f64>,
-    pub min_country_probability: Option<f64>,
-}
 
 #[derive(Clone)]
 pub struct ProfileRepo {
@@ -123,7 +91,9 @@ impl ProfileRepo {
                 country_prob_index,
             ])
             .await
-            .map_err(|e| AppError::ServiceUnavailable(format!("Failed to create indexes: {e}")))?;
+            .map_err(|err| {
+                AppError::ServiceUnavailable(format!("Failed to create indexes: {err}"))
+            })?;
 
         tracing::info!("Database indexes verified");
         Ok(())
@@ -133,14 +103,14 @@ impl ProfileRepo {
         self.collection
             .find_one(bson::doc! { "name": name })
             .await
-            .map_err(|e| AppError::ServiceUnavailable(format!("DB Search Error: {e}")))
+            .map_err(|err| AppError::ServiceUnavailable(format!("DB Search Error: {err}")))
     }
 
     pub async fn find_by_id(&self, id: Uuid) -> Result<Option<Profile>> {
         self.collection
             .find_one(bson::doc! { "_id": bson::Uuid::from(id) })
             .await
-            .map_err(|e| AppError::ServiceUnavailable(format!("DB Search Error: {e}")))
+            .map_err(|err| AppError::ServiceUnavailable(format!("DB Search Error: {err}")))
     }
 
     pub async fn delete_by_id(&self, id: Uuid) -> Result<bool> {
@@ -148,7 +118,7 @@ impl ProfileRepo {
             .collection
             .delete_one(bson::doc! { "_id": bson::Uuid::from(id) })
             .await
-            .map_err(|e| AppError::ServiceUnavailable(format!("DB Delete Error: {e}")))?;
+            .map_err(|err| AppError::ServiceUnavailable(format!("DB Delete Error: {err}")))?;
         Ok(result.deleted_count > 0)
     }
 
@@ -229,15 +199,15 @@ impl ProfileRepo {
 
         let (cursor_res, count_res) = tokio::join!(cursor_future, count_future);
 
-        let cursor =
-            cursor_res.map_err(|e| AppError::ServiceUnavailable(format!("DB Find Error: {e}")))?;
-        let count =
-            count_res.map_err(|e| AppError::ServiceUnavailable(format!("DB Count Error: {e}")))?;
+        let cursor = cursor_res
+            .map_err(|err| AppError::ServiceUnavailable(format!("DB Find Error: {err}")))?;
+        let count = count_res
+            .map_err(|err| AppError::ServiceUnavailable(format!("DB Count Error: {err}")))?;
 
         let profiles: Vec<Profile> = cursor
             .try_collect()
             .await
-            .map_err(|e| AppError::ServiceUnavailable(format!("DB Cursor Error: {e}")))?;
+            .map_err(|err| AppError::ServiceUnavailable(format!("DB Cursor Error: {err}")))?;
 
         Ok((profiles, count))
     }
@@ -318,11 +288,11 @@ impl ProfileRepo {
             .find(filter_doc)
             .with_options(find_options)
             .await
-            .map_err(|e| AppError::ServiceUnavailable(format!("DB Find Error: {e}")))?;
+            .map_err(|err| AppError::ServiceUnavailable(format!("DB Find Error: {err}")))?;
 
         cursor
             .try_collect()
             .await
-            .map_err(|e| AppError::ServiceUnavailable(format!("DB Cursor Error: {e}")))
+            .map_err(|err| AppError::ServiceUnavailable(format!("DB Cursor Error: {err}")))
     }
 }

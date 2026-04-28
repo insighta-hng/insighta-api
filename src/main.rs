@@ -30,20 +30,22 @@ async fn main() -> Result<()> {
 
     let mut client_options = ClientOptions::parse(&config.database_url)
         .await
-        .map_err(|e| AppError::ServiceUnavailable(format!("Failed to parse MongoDB URI: {e}")))?;
+        .map_err(|err| {
+            AppError::ServiceUnavailable(format!("Failed to parse MongoDB URI: {err}"))
+        })?;
 
     let server_api = ServerApi::builder().version(ServerApiVersion::V1).build();
     client_options.server_api = Some(server_api);
 
-    let mongo_client = mongodb::Client::with_options(client_options).map_err(|e| {
-        AppError::ServiceUnavailable(format!("Failed to initialize MongoDB client: {e}"))
+    let mongo_client = mongodb::Client::with_options(client_options).map_err(|err| {
+        AppError::ServiceUnavailable(format!("Failed to initialize MongoDB client: {err}"))
     })?;
 
     mongo_client
         .database("admin")
         .run_command(doc! {"ping": 1})
         .await
-        .map_err(|e| AppError::ServiceUnavailable(format!("Failed to ping MongoDB: {e}")))?;
+        .map_err(|err| AppError::ServiceUnavailable(format!("Failed to ping MongoDB: {err}")))?;
 
     tracing::info!("Successfully connected to MongoDB Atlas");
 
@@ -75,7 +77,7 @@ async fn main() -> Result<()> {
     {
         let states = state.oauth_states.clone();
         tokio::spawn(async move {
-            let ttl = Duration::from_secs(300); // 5 minutes
+            let ttl = Duration::from_secs(300);
             let mut interval = tokio::time::interval(Duration::from_secs(60));
             loop {
                 interval.tick().await;

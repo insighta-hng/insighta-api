@@ -13,18 +13,13 @@ use axum::{
 use crate::{
     AppState,
     auth::{
+        github::process_github_callback,
         pkce::verify_code_challenge,
         tokens::{issue_access_token, issue_refresh_token},
     },
     errors::{AppError, Result},
-    models::{
-        auth::{
-            AuthInitQuery, CallbackQuery, GithubTokenResponse, GithubUser, RefreshRequest,
-            TokenResponse,
-        },
-        user::GithubUserInfo,
-    },
-    utils::{fetch_github_primary_email, generate_csrf_token},
+    models::auth::{AuthInitQuery, CallbackQuery, RefreshRequest, TokenResponse},
+    utils::generate_csrf_token,
 };
 
 /// Initiates the GitHub OAuth 2.0 authorization flow.
@@ -50,7 +45,7 @@ pub async fn github_init(
     query: std::result::Result<Query<AuthInitQuery>, QueryRejection>,
 ) -> Result<Response> {
     let query = match query {
-        Ok(Query(q)) => q,
+        Ok(Query(query_params)) => query_params,
         Err(_) => AuthInitQuery::default(),
     };
 
@@ -85,7 +80,8 @@ pub async fn github_init(
         state.config.github_client_id, oauth_state, redirect_uri
     );
 
-    // PKCE: tell GitHub which challenge to expect so it enforces the verifier at exchange time.
+    // RFC 7636: Proof Key for Code Exchange (PKCE) - https://datatracker.ietf.org/doc/html/rfc7636
+    // Tell GitHub which challenge to expect so it enforces the verifier at exchange time.
     if let Some(ref challenge) = query.code_challenge {
         url.push_str(&format!(
             "&code_challenge={challenge}&code_challenge_method=S256"
@@ -159,75 +155,7 @@ pub async fn github_callback(
         None => None,
     };
 
-    let mut form_params: Vec<(&str, &str)> = vec![
-        ("client_id", state.config.github_client_id.as_str()),
-        ("client_secret", state.config.github_client_secret.as_str()),
-        ("code", code_param.as_str()),
-        ("redirect_uri", redirect_uri.as_str()),
-    ];
-
-    if let Some(ref val) = code_verifier {
-        form_params.push(("code_verifier", val.as_str()));
-    }
-
-    let token_res: GithubTokenResponse = state
-        .client
-        .get()
-        .post(&state.config.github_token_url)
-        .header("Accept", "application/json")
-        .form(&form_params)
-        .send()
-        .await
-        .map_err(|e| AppError::ServiceUnavailable(e.to_string()))?
-        .json::<GithubTokenResponse>()
-        .await
-        .map_err(|_| AppError::UpstreamInvalidResponse("GitHub token exchange failed".into()))?;
-
-    let github_token = token_res.access_token.ok_or_else(|| {
-        let msg = token_res
-            .error_description
-            .or(token_res.error)
-            .unwrap_or_else(|| "GitHub token exchange failed".into());
-        AppError::BadRequest(msg)
-    })?;
-
-    let github_user: GithubUser = state
-        .client
-        .get()
-        .get(&state.config.github_user_url)
-        .header("Authorization", format!("Bearer {github_token}"))
-        .header("User-Agent", "insighta-api")
-        .send()
-        .await
-        .map_err(|e| AppError::ServiceUnavailable(e.to_string()))?
-        .json()
-        .await
-        .map_err(|_| {
-            AppError::UpstreamInvalidResponse("Failed to fetch GitHub user profile".into())
-        })?;
-
-    let email = match github_user.email {
-        Some(e) => e,
-        None => fetch_github_primary_email(&state, &github_token).await?,
-    };
-
-    let info = GithubUserInfo {
-        github_id: github_user.id.to_string(),
-        username: github_user.login,
-        email,
-        avatar_url: github_user.avatar_url,
-    };
-
-    let user = state
-        .user_repo
-        .upsert(&info, &state.config.admin_github_ids)
-        .await?;
-
-    if !user.is_active {
-        return Err(AppError::Forbidden(
-            "Your account has been deactivated".into(),
-        ));
-    }
+    let user = process_github_callback(&state, code_param, code_verifier, redirect_uri).await?;
 
     let access_token = issue_access_token(
         user.id,
@@ -272,7 +200,7 @@ pub async fn refresh(
     State(state): State<AppState>,
     payload: std::result::Result<Json<RefreshRequest>, JsonRejection>,
 ) -> Result<impl IntoResponse> {
-    let Json(body) = payload.map_err(|e| AppError::BadRequest(e.body_text()))?;
+    let Json(body) = payload.map_err(|err| AppError::BadRequest(err.body_text()))?;
 
     let record = state
         .refresh_token_repo
@@ -330,7 +258,7 @@ pub async fn logout(
     State(state): State<AppState>,
     payload: std::result::Result<Json<RefreshRequest>, JsonRejection>,
 ) -> Result<impl IntoResponse> {
-    let Json(body) = payload.map_err(|e| AppError::BadRequest(e.body_text()))?;
+    let Json(body) = payload.map_err(|err| AppError::BadRequest(err.body_text()))?;
 
     let record = state
         .refresh_token_repo

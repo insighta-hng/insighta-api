@@ -34,8 +34,8 @@ impl UserRepo {
         self.collection
             .create_indexes(vec![github_id_index])
             .await
-            .map_err(|e| {
-                AppError::ServiceUnavailable(format!("Failed to create user indexes: {e}"))
+            .map_err(|err| {
+                AppError::ServiceUnavailable(format!("Failed to create user indexes: {err}"))
             })?;
 
         tracing::info!("User indexes verified");
@@ -46,14 +46,14 @@ impl UserRepo {
         self.collection
             .find_one(bson::doc! { "github_id": github_id })
             .await
-            .map_err(|e| AppError::ServiceUnavailable(format!("DB Search Error: {e}")))
+            .map_err(|err| AppError::ServiceUnavailable(format!("DB Search Error: {err}")))
     }
 
     pub async fn find_by_id(&self, id: Uuid) -> Result<Option<User>> {
         self.collection
             .find_one(bson::doc! { "_id": bson::Uuid::from(id) })
             .await
-            .map_err(|e| AppError::ServiceUnavailable(format!("DB Search Error: {e}")))
+            .map_err(|err| AppError::ServiceUnavailable(format!("DB Search Error: {err}")))
     }
 
     pub async fn upsert(&self, info: &GithubUserInfo, admin_ids: &str) -> Result<User> {
@@ -75,7 +75,9 @@ impl UserRepo {
                 self.collection
                     .update_one(bson::doc! { "github_id": &info.github_id }, update)
                     .await
-                    .map_err(|e| AppError::ServiceUnavailable(format!("DB Update Error: {e}")))?;
+                    .map_err(|err| {
+                        AppError::ServiceUnavailable(format!("DB Update Error: {err}"))
+                    })?;
 
                 // Re-fetch to return the current persisted state.
                 self.find_by_github_id(&info.github_id)
@@ -97,10 +99,9 @@ impl UserRepo {
                     created_at: now,
                 };
 
-                self.collection
-                    .insert_one(&user)
-                    .await
-                    .map_err(|e| AppError::ServiceUnavailable(format!("DB Insert Error: {e}")))?;
+                self.collection.insert_one(&user).await.map_err(|err| {
+                    AppError::ServiceUnavailable(format!("DB Insert Error: {err}"))
+                })?;
 
                 Ok(user)
             }

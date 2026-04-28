@@ -3,10 +3,10 @@ use crate::{
     errors::{AppError, Result},
     middleware::role::{RequireAdmin, RequireAny},
     models::profile::{
-        CreateProfileRequest, ProfileDto, ProfileQuery, ProfileResponse, SearchQuery,
+        CreateProfileRequest, Profile, ProfileDto, ProfileFilters, ProfileQuery, ProfileResponse,
+        SearchQuery,
     },
     parser::parse_query,
-    repo::profile::{Profile, ProfileFilters},
     utils::{
         build_list_response, fetch_age_data, fetch_country_data, fetch_gender_data, validate_name,
     },
@@ -44,7 +44,7 @@ pub async fn create_profile(
     _auth: RequireAdmin,
     payload: std::result::Result<Json<CreateProfileRequest>, JsonRejection>,
 ) -> Result<impl IntoResponse> {
-    let Json(payload) = payload.map_err(|e| AppError::BadRequest(e.body_text()))?;
+    let Json(payload) = payload.map_err(|err| AppError::BadRequest(err.body_text()))?;
     let name = validate_name(payload.name)?;
 
     if let Some(existing) = state.profile_repo.find_by_name(&name).await? {
@@ -168,26 +168,26 @@ pub async fn list_profiles(
 
     let extra_params = {
         let mut params: Vec<(String, String)> = Vec::new();
-        if let Some(ref g) = filters.gender {
-            params.push(("gender".into(), g.to_string()));
+        if let Some(ref gender) = filters.gender {
+            params.push(("gender".into(), gender.to_string()));
         }
-        if let Some(ref c) = filters.country_id {
-            params.push(("country_id".into(), c.clone()));
+        if let Some(ref country_id) = filters.country_id {
+            params.push(("country_id".into(), country_id.clone()));
         }
-        if let Some(ref a) = filters.age_group {
-            params.push(("age_group".into(), a.clone()));
+        if let Some(ref age_group) = filters.age_group {
+            params.push(("age_group".into(), age_group.clone()));
         }
-        if let Some(m) = filters.min_age {
-            params.push(("min_age".into(), m.to_string()));
+        if let Some(min_age) = filters.min_age {
+            params.push(("min_age".into(), min_age.to_string()));
         }
-        if let Some(m) = filters.max_age {
-            params.push(("max_age".into(), m.to_string()));
+        if let Some(max_age) = filters.max_age {
+            params.push(("max_age".into(), max_age.to_string()));
         }
-        if let Some(p) = filters.min_gender_probability {
-            params.push(("min_gender_probability".into(), p.to_string()));
+        if let Some(probability) = filters.min_gender_probability {
+            params.push(("min_gender_probability".into(), probability.to_string()));
         }
-        if let Some(p) = filters.min_country_probability {
-            params.push(("min_country_probability".into(), p.to_string()));
+        if let Some(probability) = filters.min_country_probability {
+            params.push(("min_country_probability".into(), probability.to_string()));
         }
         params.push(("sort_by".into(), sort_by.as_str().into()));
         params.push(("order".into(), order.as_str().into()));
@@ -266,14 +266,14 @@ pub async fn search_profiles(
     let Query(query) =
         query.map_err(|_| AppError::UnprocessableEntity("Invalid query parameters".into()))?;
 
-    let q = query
+    let search_string = query
         .q
         .ok_or_else(|| AppError::BadRequest("Missing or empty parameter".into()))?;
-    if q.trim().is_empty() {
+    if search_string.trim().is_empty() {
         return Err(AppError::BadRequest("Missing or empty parameter".into()));
     }
 
-    let (filters, parsed_search_query) = parse_query(&q)?;
+    let (filters, parsed_search_query) = parse_query(&search_string)?;
 
     let page = query.page.unwrap_or(1).max(1);
     let limit = query
@@ -288,7 +288,7 @@ pub async fn search_profiles(
         .unwrap_or(parsed_search_query.order.unwrap_or_default());
 
     let extra_params = vec![
-        ("q".into(), q.clone()),
+        ("q".into(), search_string.clone()),
         ("sort_by".into(), sort_by.as_str().into()),
         ("order".into(), order.as_str().into()),
     ];
@@ -367,7 +367,6 @@ pub async fn export_profiles_to_csv(
 
     let mut writer = csv::Writer::from_writer(vec![]);
 
-    // Header row — column order per TRD
     writer
         .write_record([
             "id",
@@ -381,7 +380,7 @@ pub async fn export_profiles_to_csv(
             "country_probability",
             "created_at",
         ])
-        .map_err(|e| AppError::InternalServerError(format!("CSV write error: {e}")))?;
+        .map_err(|err| AppError::InternalServerError(format!("CSV write error: {err}")))?;
 
     for profile in profiles {
         writer
@@ -399,19 +398,19 @@ pub async fn export_profiles_to_csv(
                     .created_at
                     .to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
             ])
-            .map_err(|e| AppError::InternalServerError(format!("CSV write error: {e}")))?;
+            .map_err(|err| AppError::InternalServerError(format!("CSV write error: {err}")))?;
     }
 
     let csv_bytes = writer
         .into_inner()
-        .map_err(|e| AppError::InternalServerError(format!("CSV flush error: {e}")))?;
+        .map_err(|err| AppError::InternalServerError(format!("CSV flush error: {err}")))?;
 
     let timestamp = chrono::Utc::now().format("%Y%m%dT%H%M%SZ");
     let filename = format!("profiles_{timestamp}.csv");
 
     let content_disposition =
         header::HeaderValue::from_str(&format!("attachment; filename=\"{filename}\""))
-            .map_err(|e| AppError::InternalServerError(format!("Invalid header value: {e}")))?;
+            .map_err(|err| AppError::InternalServerError(format!("Invalid header value: {err}")))?;
 
     let headers = AppendHeaders([
         (

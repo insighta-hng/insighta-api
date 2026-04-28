@@ -1,8 +1,8 @@
 use std::path::Path;
 
 use crate::{
-    models::seed::SeedFile,
-    repo::profile::{Profile, ProfileRepo},
+    models::{profile::Profile, seed::SeedFile},
+    repo::profile::ProfileRepo,
 };
 use chrono::Utc;
 use uuid::Uuid;
@@ -23,7 +23,7 @@ pub async fn run(repo: ProfileRepo) {
     };
 
     let seed_file: SeedFile = match serde_json::from_str(&raw_seed_data) {
-        Ok(f) => f,
+        Ok(parsed) => parsed,
         Err(e) => {
             tracing::error!("Failed to parse seed file: {}", e);
             return;
@@ -36,16 +36,16 @@ pub async fn run(repo: ProfileRepo) {
     let profiles: Vec<Profile> = seed_file
         .profiles
         .into_iter()
-        .map(|sp| Profile {
+        .map(|seed_profile| Profile {
             id: Uuid::now_v7(),
-            name: sp.name,
-            gender: sp.gender,
-            gender_probability: sp.gender_probability,
-            age: sp.age,
-            age_group: sp.age_group,
-            country_id: sp.country_id,
-            country_name: sp.country_name,
-            country_probability: sp.country_probability,
+            name: seed_profile.name,
+            gender: seed_profile.gender,
+            gender_probability: seed_profile.gender_probability,
+            age: seed_profile.age,
+            age_group: seed_profile.age_group,
+            country_id: seed_profile.country_id,
+            country_name: seed_profile.country_name,
+            country_probability: seed_profile.country_probability,
             created_at: now,
         })
         .collect();
