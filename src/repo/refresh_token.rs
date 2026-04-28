@@ -1,21 +1,12 @@
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use mongodb::{Collection, Database, IndexModel, bson, options::IndexOptions};
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
     errors::{AppError, Result},
+    models::auth::RefreshToken,
     utils::hash_token,
 };
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RefreshToken {
-    pub token: String,
-    #[serde(with = "bson::serde_helpers::uuid_1_as_binary")]
-    pub user_id: Uuid,
-    #[serde(with = "bson::serde_helpers::chrono_datetime_as_bson_datetime")]
-    pub expires_at: DateTime<Utc>,
-}
 
 #[derive(Clone, Debug)]
 pub struct RefreshTokenRepo {
@@ -54,8 +45,10 @@ impl RefreshTokenRepo {
         self.collection
             .create_indexes(vec![ttl_index, token_index])
             .await
-            .map_err(|e| {
-                AppError::ServiceUnavailable(format!("Failed to create refresh token indexes: {e}"))
+            .map_err(|err| {
+                AppError::ServiceUnavailable(format!(
+                    "Failed to create refresh token indexes: {err}"
+                ))
             })?;
 
         tracing::info!("Refresh token indexes verified");
@@ -66,7 +59,7 @@ impl RefreshTokenRepo {
         self.collection
             .insert_one(token)
             .await
-            .map_err(|e| AppError::ServiceUnavailable(format!("DB Insert Error: {e}")))?;
+            .map_err(|err| AppError::ServiceUnavailable(format!("DB Insert Error: {err}")))?;
         Ok(())
     }
 
@@ -77,7 +70,7 @@ impl RefreshTokenRepo {
             .collection
             .find_one_and_delete(bson::doc! { "token": &token_hash })
             .await
-            .map_err(|e| AppError::ServiceUnavailable(format!("DB Delete Error: {e}")))?;
+            .map_err(|err| AppError::ServiceUnavailable(format!("DB Delete Error: {err}")))?;
 
         match doc {
             None => Ok(None),
@@ -98,7 +91,7 @@ impl RefreshTokenRepo {
         self.collection
             .delete_many(bson::doc! { "user_id": bson::Uuid::from(user_id) })
             .await
-            .map_err(|e| AppError::ServiceUnavailable(format!("DB Delete Error: {e}")))?;
+            .map_err(|err| AppError::ServiceUnavailable(format!("DB Delete Error: {err}")))?;
         Ok(())
     }
 }

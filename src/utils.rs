@@ -136,7 +136,7 @@ pub async fn fetch_github_primary_email(state: &AppState, github_token: &str) ->
         .header("User-Agent", "insighta-api")
         .send()
         .await
-        .map_err(|e| AppError::ServiceUnavailable(e.to_string()))?
+        .map_err(|err| AppError::ServiceUnavailable(err.to_string()))?
         .json()
         .await
         .map_err(|_| {
@@ -145,8 +145,8 @@ pub async fn fetch_github_primary_email(state: &AppState, github_token: &str) ->
 
     emails
         .into_iter()
-        .find(|e| e.primary && e.verified)
-        .map(|e| e.email)
+        .find(|entry| entry.primary && entry.verified)
+        .map(|entry| entry.email)
         .ok_or_else(|| {
             AppError::UpstreamInvalidResponse(
                 "No verified primary email on GitHub account".to_string(),
@@ -159,7 +159,7 @@ pub fn extract_bearer_token(req: &Request) -> Option<String> {
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|val| val.to_str().ok())
         .and_then(|val| val.strip_prefix("Bearer "))
-        .map(|t| t.to_string())
+        .map(|token| token.to_string())
 }
 
 pub fn build_list_response(
@@ -213,8 +213,8 @@ pub fn build_list_response(
 pub fn resolve_role(github_id: &str, admin_ids: &str) -> Role {
     let is_admin = admin_ids
         .split(',')
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
+        .map(|id_str| id_str.trim())
+        .filter(|id_str| !id_str.is_empty())
         .any(|id| id == github_id);
 
     if is_admin {
@@ -243,7 +243,8 @@ pub fn make_http_only_cookie<'a>(
 ) -> Cookie<'a> {
     let mut cookie = Cookie::new(name, value);
     cookie.set_http_only(true);
-    // cross_site (SameSite=None) requires Secure; secure flag is additive.
+    // RFC 6265bis: SameSite=None requires the Secure attribute.
+    // https://datatracker.ietf.org/doc/html/draft-ietf-httpbis-rfc6265bis-03#section-4.1.2.7
     cookie.set_secure(secure || cross_site);
     cookie.set_same_site(if cross_site {
         tower_cookies::cookie::SameSite::None

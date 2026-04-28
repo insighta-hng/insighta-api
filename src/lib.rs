@@ -19,6 +19,9 @@ pub mod utils;
 #[derive(Clone, Debug)]
 pub struct RequestId(pub String);
 
+/// Tracks pending OAuth authorization flows.
+///
+/// Aliased to resolve clippy::type_complexity warnings and provide a clear domain type.
 /// The `Instant` tracks creation time so a background reaper can prune stale entries.
 pub type OAuthStateMap = DashMap<String, (Option<String>, String, std::time::Instant)>;
 

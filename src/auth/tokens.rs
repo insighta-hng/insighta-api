@@ -7,13 +7,14 @@ use uuid::Uuid;
 
 use crate::{
     errors::{AppError, Result},
-    models::user::Role,
-    repo::refresh_token::{RefreshToken, RefreshTokenRepo},
+    models::{auth::RefreshToken, user::Role},
+    repo::refresh_token::RefreshTokenRepo,
     utils::hash_token,
 };
 
-const ACCESS_TOKEN_EXPIRY_SECS: i64 = 180; // 3-minutes
-const REFRESH_TOKEN_EXPIRY_SECS: i64 = 300; // 5-minutes
+// RFC 7519: JSON Web Token (JWT) - https://datatracker.ietf.org/doc/html/rfc7519
+const ACCESS_TOKEN_EXPIRY_SECS: i64 = 180;
+const REFRESH_TOKEN_EXPIRY_SECS: i64 = 300;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
@@ -44,7 +45,7 @@ pub fn issue_access_token(
         &claims,
         &EncodingKey::from_secret(secret.as_bytes()),
     )
-    .map_err(|e| AppError::InternalServerError(format!("Failed to sign token: {e}")))
+    .map_err(|err| AppError::InternalServerError(format!("Failed to sign token: {err}")))
 }
 
 pub fn validate_access_token(token: &str, secret: &str) -> Result<Claims> {
@@ -57,7 +58,7 @@ pub fn validate_access_token(token: &str, secret: &str) -> Result<Claims> {
         &validation,
     )
     .map(|data| data.claims)
-    .map_err(|e| match e.kind() {
+    .map_err(|err| match err.kind() {
         jsonwebtoken::errors::ErrorKind::ExpiredSignature => {
             AppError::Unauthorized("Access token has expired".to_string())
         }

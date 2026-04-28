@@ -42,7 +42,7 @@ pub async fn csrf_protection(req: Request, next: Next) -> Response {
         .headers()
         .get(CSRF_HEADER)
         .and_then(|val| val.to_str().ok())
-        .map(|s| s.to_string());
+        .map(|token_str| token_str.to_string());
 
     match (csrf_cookie, csrf_header) {
         (Some(cookie_val), Some(header_val)) if cookie_val == header_val => next.run(req).await,
