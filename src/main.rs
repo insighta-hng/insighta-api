@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use dashmap::DashMap;
 use insighta_api::{
@@ -67,6 +70,20 @@ async fn main() -> Result<()> {
         auth_rate_limit: RateLimitStore::new(),
         api_rate_limit: RateLimitStore::new(),
     };
+
+    // Prune OAuth state entries that were never completed (e.g. user closed the browser).
+    {
+        let states = state.oauth_states.clone();
+        tokio::spawn(async move {
+            let ttl = Duration::from_secs(300); // 5 minutes
+            let mut interval = tokio::time::interval(Duration::from_secs(60));
+            loop {
+                interval.tick().await;
+                let now = Instant::now();
+                states.retain(|_, (_, _, created)| now.duration_since(*created) < ttl);
+            }
+        });
+    }
 
     let app = create_app(state);
 

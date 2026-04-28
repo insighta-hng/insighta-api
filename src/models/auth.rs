@@ -2,20 +2,23 @@ use serde::{Deserialize, Serialize};
 
 use crate::{models::user::Role, repo::user::UserRepo};
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 pub struct AuthInitQuery {
     /// PKCE code challenge (base64url SHA-256 of the verifier).
     /// Present for CLI flows; omitted for web flows.
     pub code_challenge: Option<String>,
     /// Random opaque string to prevent CSRF during the OAuth roundtrip.
-    pub state: String,
+    pub state: Option<String>,
     pub redirect_uri: Option<String>,
+    pub code_challenge_method: Option<String>,
+    /// Set to "1" by CLI clients to distinguish CLI flows from web flows.
+    pub cli: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 pub struct CallbackQuery {
-    pub code: String,
-    pub state: String,
+    pub code: Option<String>,
+    pub state: Option<String>,
     pub code_verifier: Option<String>,
 }
 
@@ -75,7 +78,11 @@ pub struct UserInfoResponse {
 #[derive(Debug, Serialize)]
 pub struct UserInfo {
     pub id: String,
+    pub github_id: String,
     pub username: String,
+    pub full_name: String,
+    pub first_name: String,
+    pub last_name: String,
     pub email: String,
     pub avatar_url: String,
     pub role: String,
