@@ -276,3 +276,14 @@ pub fn clear_cookie(name: &'static str) -> Cookie<'static> {
     cookie.set_max_age(tower_cookies::cookie::time::Duration::seconds(0));
     cookie
 }
+
+pub fn get_user_first_last_name(username: &str) -> (String, String) {
+    let names: Vec<&str> = username.split_whitespace().collect();
+    let first_name = names.first().cloned().unwrap_or("Test");
+    let last_name = if names.len() > 1 {
+        names[1..].join(" ")
+    } else {
+        "User".to_string()
+    };
+    (first_name.to_string(), last_name)
+}
