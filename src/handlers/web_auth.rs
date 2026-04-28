@@ -1,7 +1,7 @@
 use axum::{
     Json,
     extract::{Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
 };
 use tower_cookies::Cookies;
@@ -10,7 +10,7 @@ use crate::{
     AppState,
     auth::{
         pkce::verify_code_challenge,
-        tokens::{issue_access_token, issue_refresh_token},
+        tokens::{issue_access_token, issue_refresh_token, validate_access_token},
     },
     errors::{AppError, Result},
     models::{
@@ -19,7 +19,7 @@ use crate::{
     },
     utils::{
         CSRF_COOKIE, clear_cookie, fetch_github_primary_email, generate_csrf_token,
-        make_csrf_cookie, make_http_only_cookie,
+        get_user_first_last_name, make_csrf_cookie, make_http_only_cookie,
     },
 };
 
@@ -35,19 +35,27 @@ pub async fn web_exchange(
     cookies: Cookies,
     Query(query): Query<CallbackQuery>,
 ) -> Result<impl IntoResponse> {
+    let state_param = query
+        .state
+        .ok_or_else(|| AppError::BadRequest("Missing query parameter: state".into()))?;
+
+    let code_param = query
+        .code
+        .ok_or_else(|| AppError::BadRequest("Missing query parameter: code".into()))?;
+
     let (code_challenge, redirect_uri) = state
         .oauth_states
-        .remove(&query.state)
-        .map(|(_, v)| v)
-        .ok_or_else(|| AppError::BadRequest("Invalid or expired OAuth state".to_string()))?;
+        .remove(&state_param)
+        .map(|(_, (challenge, uri, _created))| (challenge, uri))
+        .ok_or_else(|| AppError::BadRequest("Invalid or expired OAuth state".into()))?;
 
     let code_verifier: Option<String> = match &code_challenge {
         Some(challenge) => {
             let verifier = query.code_verifier.as_ref().ok_or_else(|| {
-                AppError::BadRequest("code_verifier required for PKCE flow".to_string())
+                AppError::BadRequest("code_verifier required for PKCE flow".into())
             })?;
             if !verify_code_challenge(verifier, challenge) {
-                return Err(AppError::BadRequest("PKCE verification failed".to_string()));
+                return Err(AppError::BadRequest("PKCE verification failed".into()));
             }
             Some(verifier.clone())
         }
@@ -57,7 +65,7 @@ pub async fn web_exchange(
     let mut form_params: Vec<(&str, &str)> = vec![
         ("client_id", state.config.github_client_id.as_str()),
         ("client_secret", state.config.github_client_secret.as_str()),
-        ("code", query.code.as_str()),
+        ("code", code_param.as_str()),
         ("redirect_uri", redirect_uri.as_str()),
     ];
 
@@ -76,15 +84,13 @@ pub async fn web_exchange(
         .map_err(|e| AppError::ServiceUnavailable(e.to_string()))?
         .json()
         .await
-        .map_err(|_| {
-            AppError::UpstreamInvalidResponse("GitHub token exchange failed".to_string())
-        })?;
+        .map_err(|_| AppError::UpstreamInvalidResponse("GitHub token exchange failed".into()))?;
 
     let github_token = token_res.access_token.ok_or_else(|| {
         let msg = token_res
             .error_description
             .or(token_res.error)
-            .unwrap_or_else(|| "GitHub token exchange failed".to_string());
+            .unwrap_or_else(|| "GitHub token exchange failed".into());
         AppError::BadRequest(msg)
     })?;
 
@@ -100,7 +106,7 @@ pub async fn web_exchange(
         .json()
         .await
         .map_err(|_| {
-            AppError::UpstreamInvalidResponse("Failed to fetch GitHub user profile".to_string())
+            AppError::UpstreamInvalidResponse("Failed to fetch GitHub user profile".into())
         })?;
 
     let email = match github_user.email {
@@ -155,13 +161,19 @@ pub async fn web_exchange(
         state.config.cross_site_cookies,
     ));
 
+    let (first_name, last_name) = get_user_first_last_name(&user.username);
+
     Ok((
         StatusCode::OK,
         Json(UserInfoResponse {
             status: "success".to_string(),
             data: UserInfo {
                 id: user.id.to_string(),
-                username: user.username,
+                github_id: user.github_id,
+                username: user.username.clone(),
+                full_name: user.username,
+                first_name,
+                last_name,
                 email: user.email,
                 avatar_url: user.avatar_url,
                 role: user.role.to_string(),
@@ -176,7 +188,7 @@ pub async fn web_exchange(
 pub async fn me(
     State(state): State<AppState>,
     cookies: Cookies,
-    headers: axum::http::HeaderMap,
+    headers: HeaderMap,
 ) -> Result<impl IntoResponse> {
     let token = {
         let bearer = headers
@@ -190,38 +202,44 @@ pub async fn me(
         } else {
             cookies
                 .get(ACCESS_COOKIE)
-                .map(|c| c.value().to_string())
-                .ok_or_else(|| AppError::Unauthorized("Not authenticated".to_string()))?
+                .map(|cookie_token| cookie_token.value().to_string())
+                .ok_or_else(|| AppError::Unauthorized("Not authenticated".into()))?
         }
     };
 
-    let claims = crate::auth::tokens::validate_access_token(&token, &state.config.jwt_secret)?;
+    let claims = validate_access_token(&token, &state.config.jwt_secret)?;
 
     let user_id = uuid::Uuid::parse_str(&claims.sub)
-        .map_err(|_| AppError::Unauthorized("Malformed token".to_string()))?;
+        .map_err(|_| AppError::Unauthorized("Malformed token".into()))?;
 
     let user = state
         .user_repo
         .find_by_id(user_id)
         .await?
-        .ok_or_else(|| AppError::Unauthorized("User not found".to_string()))?;
+        .ok_or_else(|| AppError::Unauthorized("User not found".into()))?;
 
     if !user.is_active {
         return Err(AppError::Forbidden(
-            "Your account has been deactivated".to_string(),
+            "Your account has been deactivated".into(),
         ));
     }
 
-    Ok(Json(UserInfoResponse {
+    let (first_name, last_name) = get_user_first_last_name(&user.username);
+
+    Ok((Json(UserInfoResponse {
         status: "success".to_string(),
         data: UserInfo {
             id: user.id.to_string(),
-            username: user.username,
+            github_id: user.github_id,
+            username: user.username.clone(),
+            full_name: user.username,
+            first_name,
+            last_name,
             email: user.email,
             avatar_url: user.avatar_url,
             role: user.role.to_string(),
         },
-    }))
+    }),))
 }
 
 /// POST /auth/web/refresh
@@ -233,24 +251,24 @@ pub async fn web_refresh(
 ) -> Result<impl IntoResponse> {
     let refresh_token = cookies
         .get(REFRESH_COOKIE)
-        .map(|c| c.value().to_string())
-        .ok_or_else(|| AppError::Unauthorized("No refresh token".to_string()))?;
+        .map(|cookie_token| cookie_token.value().to_string())
+        .ok_or_else(|| AppError::Unauthorized("No refresh token".into()))?;
 
     let record = state
         .refresh_token_repo
         .consume(&refresh_token)
         .await?
-        .ok_or_else(|| AppError::Unauthorized("Refresh token not found".to_string()))?;
+        .ok_or_else(|| AppError::Unauthorized("Refresh token not found".into()))?;
 
     let user = state
         .user_repo
         .find_by_id(record.user_id)
         .await?
-        .ok_or_else(|| AppError::InternalServerError("User not found for token".to_string()))?;
+        .ok_or_else(|| AppError::InternalServerError("User not found for token".into()))?;
 
     if !user.is_active {
         return Err(AppError::Forbidden(
-            "Your account has been deactivated".to_string(),
+            "Your account has been deactivated".into(),
         ));
     }
 
@@ -293,8 +311,8 @@ pub async fn web_logout(
     State(state): State<AppState>,
     cookies: Cookies,
 ) -> Result<impl IntoResponse> {
-    if let Some(c) = cookies.get(REFRESH_COOKIE) {
-        let _ = state.refresh_token_repo.consume(c.value()).await;
+    if let Some(cookie_token) = cookies.get(REFRESH_COOKIE) {
+        let _ = state.refresh_token_repo.consume(cookie_token.value()).await;
     }
 
     cookies.add(clear_cookie(ACCESS_COOKIE));

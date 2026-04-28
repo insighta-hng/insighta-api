@@ -19,6 +19,9 @@ pub mod utils;
 #[derive(Clone, Debug)]
 pub struct RequestId(pub String);
 
+/// The `Instant` tracks creation time so a background reaper can prune stale entries.
+pub type OAuthStateMap = DashMap<String, (Option<String>, String, std::time::Instant)>;
+
 #[derive(Clone, Debug)]
 pub struct AppState {
     pub config: AppConfig,
@@ -27,7 +30,7 @@ pub struct AppState {
     pub user_repo: crate::repo::user::UserRepo,
     pub refresh_token_repo: crate::repo::refresh_token::RefreshTokenRepo,
     /// `code_challenge` is `Some` for CLI (PKCE) flows and `None` for web flows.
-    pub oauth_states: std::sync::Arc<DashMap<String, (Option<String>, String)>>,
+    pub oauth_states: std::sync::Arc<OAuthStateMap>,
     pub auth_rate_limit: RateLimitStore,
     pub api_rate_limit: RateLimitStore,
 }
@@ -118,6 +121,10 @@ pub fn create_app(state: AppState) -> axum::Router {
             "/api/profiles/{id}",
             axum::routing::get(handlers::profile::get_profile)
                 .delete(handlers::profile::delete_profile),
+        )
+        .route(
+            "/api/users/me",
+            axum::routing::get(handlers::user::get_current_user),
         )
         .layer(axum::middleware::from_fn_with_state(
             api_rate_store,

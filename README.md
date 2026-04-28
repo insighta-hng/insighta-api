@@ -120,7 +120,7 @@ GET /auth/github
   &redirect_uri=http://localhost:8182/callback
 ```
 
-The backend stores `state → (challenge, redirect_uri)` in memory and issues a redirect to GitHub.
+The backend stores `state → (challenge, redirect_uri, created_at)` in memory and issues a redirect to GitHub. A background task prunes entries older than 5 minutes every 60 seconds to prevent memory leaks from abandoned flows.
 
 **Callback capture**
 

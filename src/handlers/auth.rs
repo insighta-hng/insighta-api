@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use axum::{
     Json,
     extract::{
@@ -22,7 +24,7 @@ use crate::{
         },
         user::GithubUserInfo,
     },
-    utils::fetch_github_primary_email,
+    utils::{fetch_github_primary_email, generate_csrf_token},
 };
 
 /// Initiates the GitHub OAuth 2.0 authorization flow.
@@ -47,24 +49,40 @@ pub async fn github_init(
     State(state): State<AppState>,
     query: std::result::Result<Query<AuthInitQuery>, QueryRejection>,
 ) -> Result<Response> {
-    let Query(query) =
-        query.map_err(|_| AppError::UnprocessableEntity("Invalid query parameters".to_string()))?;
+    let query = match query {
+        Ok(Query(q)) => q,
+        Err(_) => AuthInitQuery::default(),
+    };
+
+    let oauth_state = match query.state {
+        Some(q_state) if !q_state.is_empty() => q_state,
+        _ => generate_csrf_token(),
+    };
 
     let redirect_uri = match query.redirect_uri {
-        Some(ref uri) => uri.clone(),
-        None => state.config.github_redirect_uri.clone().ok_or_else(|| {
-            AppError::InternalServerError("GITHUB_REDIRECT_URI not set".to_string())
-        })?,
+        Some(ref uri) if !uri.is_empty() => uri.clone(),
+        _ => state.config.github_redirect_uri.clone().unwrap_or_else(|| {
+            let host = state
+                .config
+                .public_host
+                .as_deref()
+                .unwrap_or("localhost:8000");
+            format!("https://{host}/auth/github/callback")
+        }),
     };
 
     state.oauth_states.insert(
-        query.state.clone(),
-        (query.code_challenge.clone(), redirect_uri.clone()),
+        oauth_state.clone(),
+        (
+            query.code_challenge.clone(),
+            redirect_uri.clone(),
+            Instant::now(),
+        ),
     );
 
     let mut url = format!(
         "https://github.com/login/oauth/authorize?client_id={}&state={}&scope=user:email&redirect_uri={}",
-        state.config.github_client_id, query.state, redirect_uri
+        state.config.github_client_id, oauth_state, redirect_uri
     );
 
     // PKCE: tell GitHub which challenge to expect so it enforces the verifier at exchange time.
@@ -105,23 +123,36 @@ pub async fn github_callback(
     State(state): State<AppState>,
     query: std::result::Result<Query<CallbackQuery>, QueryRejection>,
 ) -> Result<impl IntoResponse> {
-    let Query(query) =
-        query.map_err(|_| AppError::UnprocessableEntity("Invalid query parameters".to_string()))?;
+    let Query(query) = query.unwrap_or_else(|_| Query(CallbackQuery::default()));
+
+    let state_param = query
+        .state
+        .as_ref()
+        .filter(|state_param| !state_param.is_empty())
+        .ok_or_else(|| AppError::BadRequest("Missing query parameter: state".into()))?
+        .clone();
+
+    let code_param = query
+        .code
+        .as_ref()
+        .filter(|code_param| !code_param.is_empty())
+        .ok_or_else(|| AppError::BadRequest("Missing query parameter: code".into()))?
+        .clone();
 
     let (code_challenge, redirect_uri) = state
         .oauth_states
-        .remove(&query.state)
-        .map(|(_, val)| val)
-        .ok_or_else(|| AppError::BadRequest("Invalid or expired OAuth state".to_string()))?;
+        .remove(&state_param)
+        .map(|(_, (challenge, uri, _created))| (challenge, uri))
+        .ok_or_else(|| AppError::BadRequest("Invalid or expired OAuth state".into()))?;
 
     // For PKCE flows: verify application-side and capture the verifier to forward to GitHub.
     let code_verifier: Option<String> = match &code_challenge {
         Some(challenge) => {
             let verifier = query.code_verifier.as_ref().ok_or_else(|| {
-                AppError::BadRequest("code_verifier required for PKCE flow".to_string())
+                AppError::BadRequest("code_verifier required for PKCE flow".into())
             })?;
             if !verify_code_challenge(verifier, challenge) {
-                return Err(AppError::BadRequest("PKCE verification failed".to_string()));
+                return Err(AppError::BadRequest("PKCE verification failed".into()));
             }
             Some(verifier.clone())
         }
@@ -131,7 +162,7 @@ pub async fn github_callback(
     let mut form_params: Vec<(&str, &str)> = vec![
         ("client_id", state.config.github_client_id.as_str()),
         ("client_secret", state.config.github_client_secret.as_str()),
-        ("code", query.code.as_str()),
+        ("code", code_param.as_str()),
         ("redirect_uri", redirect_uri.as_str()),
     ];
 
@@ -142,7 +173,7 @@ pub async fn github_callback(
     let token_res: GithubTokenResponse = state
         .client
         .get()
-        .post("https://github.com/login/oauth/access_token")
+        .post(&state.config.github_token_url)
         .header("Accept", "application/json")
         .form(&form_params)
         .send()
@@ -150,22 +181,20 @@ pub async fn github_callback(
         .map_err(|e| AppError::ServiceUnavailable(e.to_string()))?
         .json::<GithubTokenResponse>()
         .await
-        .map_err(|_| {
-            AppError::UpstreamInvalidResponse("GitHub token exchange failed".to_string())
-        })?;
+        .map_err(|_| AppError::UpstreamInvalidResponse("GitHub token exchange failed".into()))?;
 
     let github_token = token_res.access_token.ok_or_else(|| {
         let msg = token_res
             .error_description
             .or(token_res.error)
-            .unwrap_or_else(|| "GitHub token exchange failed".to_string());
+            .unwrap_or_else(|| "GitHub token exchange failed".into());
         AppError::BadRequest(msg)
     })?;
 
     let github_user: GithubUser = state
         .client
         .get()
-        .get("https://api.github.com/user")
+        .get(&state.config.github_user_url)
         .header("Authorization", format!("Bearer {github_token}"))
         .header("User-Agent", "insighta-api")
         .send()
@@ -174,7 +203,7 @@ pub async fn github_callback(
         .json()
         .await
         .map_err(|_| {
-            AppError::UpstreamInvalidResponse("Failed to fetch GitHub user profile".to_string())
+            AppError::UpstreamInvalidResponse("Failed to fetch GitHub user profile".into())
         })?;
 
     let email = match github_user.email {
@@ -196,7 +225,7 @@ pub async fn github_callback(
 
     if !user.is_active {
         return Err(AppError::Forbidden(
-            "Your account has been deactivated".to_string(),
+            "Your account has been deactivated".into(),
         ));
     }
 
