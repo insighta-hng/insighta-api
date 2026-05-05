@@ -1,8 +1,10 @@
 use axum::extract::Request;
+use chrono::Utc;
 use rand::Rng;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use tower_cookies::Cookie;
+use uuid::Uuid;
 
 use crate::{
     AppState,
@@ -13,8 +15,8 @@ use crate::{
         age::{AgeGroup, AgifyResponse},
         auth::EmailEntry,
         country::{NationalizeRawResponse, NationalizeResponse},
-        gender::GenderizeResponse,
-        profile::{PaginationLinks, ProfileDto, ProfileListResponse},
+        gender::{Gender, GenderizeResponse},
+        profile::{ImportSkipReasons, PaginationLinks, Profile, ProfileDto, ProfileListResponse},
         user::Role,
     },
 };
@@ -287,4 +289,101 @@ pub fn get_user_first_last_name(username: &str) -> (String, String) {
         "User".to_string()
     };
     (first_name.to_string(), last_name)
+}
+
+pub fn validate_csv_row(
+    record: &csv::StringRecord,
+    headers: &csv::StringRecord,
+    reasons: &mut ImportSkipReasons,
+) -> Option<Profile> {
+    let get = |name: &str| -> Option<&str> {
+        headers
+            .iter()
+            .position(|header_str| header_str.eq_ignore_ascii_case(name))
+            .and_then(|idx| record.get(idx))
+            .map(|val| val.trim())
+            .filter(|val| !val.is_empty())
+    };
+
+    // Required: name
+    let name = match get("name") {
+        Some(val) => val.to_string(),
+        None => {
+            reasons.missing_fields += 1;
+            return None;
+        }
+    };
+
+    // Required: gender
+    let gender = match get("gender") {
+        Some("male") => Gender::Male,
+        Some("female") => Gender::Female,
+        Some(_) => {
+            reasons.missing_fields += 1;
+            return None;
+        }
+        None => {
+            reasons.missing_fields += 1;
+            return None;
+        }
+    };
+
+    // Required: age (must be a valid u8)
+    let age: u8 = match get("age") {
+        Some(val) => match val.parse::<u8>() {
+            Ok(num_val) => num_val,
+            Err(_) => {
+                reasons.invalid_age += 1;
+                return None;
+            }
+        },
+        None => {
+            reasons.missing_fields += 1;
+            return None;
+        }
+    };
+
+    // Optional with derived fallback: gender_probability
+    let gender_probability = get("gender_probability")
+        .and_then(|val| val.parse::<f64>().ok())
+        .map(|prob| (prob * 100.0).round() / 100.0)
+        .unwrap_or(0.0);
+
+    // Optional with derived fallback: age_group
+    let age_group = get("age_group")
+        .map(|val| val.to_lowercase())
+        .unwrap_or_else(|| format!("{:?}", AgeGroup::classify(age)).to_lowercase());
+
+    // Required: country_id
+    let country_id = match get("country_id") {
+        Some(val) => val.to_uppercase(),
+        None => {
+            reasons.missing_fields += 1;
+            return None;
+        }
+    };
+
+    // Optional with derived fallback: country_name
+    let country_name = get("country_name")
+        .map(|val| val.to_string())
+        .unwrap_or_else(|| iso_to_country_name(&country_id).to_string());
+
+    // Optional with derived fallback: country_probability
+    let country_probability = get("country_probability")
+        .and_then(|val| val.parse::<f64>().ok())
+        .map(|prob| (prob * 100.0).round() / 100.0)
+        .unwrap_or(0.0);
+
+    Some(Profile {
+        id: Uuid::now_v7(),
+        name,
+        gender,
+        gender_probability,
+        age,
+        age_group,
+        country_id,
+        country_name,
+        country_probability,
+        created_at: Utc::now(),
+    })
 }
