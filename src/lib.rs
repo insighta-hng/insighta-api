@@ -127,7 +127,9 @@ pub fn create_app(state: AppState) -> axum::Router {
         )
         .route(
             "/api/profiles/import",
-            axum::routing::post(handlers::profile::import_profiles),
+            axum::routing::post(handlers::profile::import_profiles)
+                // Axum defaults to 2MB. 150MB accommodates 500k-row CSVs (~30MB) with headroom.
+                .layer(axum::extract::DefaultBodyLimit::max(150 * 1024 * 1024)),
         )
         .route(
             "/api/profiles/{id}",
