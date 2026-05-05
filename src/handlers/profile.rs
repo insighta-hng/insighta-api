@@ -23,7 +23,33 @@ use axum::{
     http::{StatusCode, header},
     response::{AppendHeaders, IntoResponse, Response},
 };
+use futures::StreamExt;
 use uuid::Uuid;
+
+const IMPORT_BATCH_SIZE: usize = 1_000;
+
+/// A synchronous reader that bridges a Tokio mpsc channel of `Bytes` chunks
+/// into a standard `std::io::Read` interface for use with the `csv` crate.
+struct ChannelReader {
+    receiver: tokio::sync::mpsc::Receiver<bytes::Bytes>,
+    buffer: bytes::Bytes,
+}
+
+impl std::io::Read for ChannelReader {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if self.buffer.is_empty() {
+            match self.receiver.blocking_recv() {
+                Some(bytes) => self.buffer = bytes,
+                None => return Ok(0), // EOF
+            }
+        }
+
+        let len = std::cmp::min(buf.len(), self.buffer.len());
+        buf[..len].copy_from_slice(&self.buffer[..len]);
+        self.buffer = self.buffer.split_off(len);
+        Ok(len)
+    }
+}
 
 /// Creates a new profile by querying external demography APIs (Genderize, Agify, Nationalize).
 ///
@@ -467,52 +493,48 @@ pub async fn export_profiles_to_csv(
     Ok((headers, csv_bytes))
 }
 
-const IMPORT_BATCH_SIZE: usize = 1_000;
-
 pub async fn import_profiles(
     State(state): State<AppState>,
     _auth: RequireAdmin,
     mut multipart: Multipart,
 ) -> Result<impl IntoResponse> {
-    // Pull the file field from the multipart stream.
-    let file_bytes = loop {
-        let field = multipart
+    let mut field = loop {
+        let multipart_field = multipart
             .next_field()
             .await
             .map_err(|err| AppError::BadRequest(format!("Multipart read error: {err}")))?
             .ok_or_else(|| AppError::BadRequest("No file field found in request".into()))?;
 
-        let name = field.name().unwrap_or("").to_string();
+        let name = multipart_field.name().unwrap_or("").to_string();
         if name == "file" {
-            let bytes = field
-                .bytes()
-                .await
-                .map_err(|err| AppError::BadRequest(format!("Failed to read file field: {err}")))?;
-            break bytes;
+            break multipart_field;
         }
-        // Skip non-file fields and keep looking.
     };
 
-    // Parse and validate all rows in a blocking thread to avoid stalling the executor.
-    let (total_rows, inserted, reasons) = tokio::task::spawn_blocking(move || {
-        let mut reader = csv::ReaderBuilder::new()
+    let (tx_bytes, rx_bytes) = tokio::sync::mpsc::channel::<bytes::Bytes>(16);
+    let (tx_batches, mut rx_batches) = tokio::sync::mpsc::channel::<Vec<Profile>>(16);
+
+    let parse_task = tokio::task::spawn_blocking(move || {
+        let reader = ChannelReader {
+            receiver: rx_bytes,
+            buffer: bytes::Bytes::new(),
+        };
+
+        let mut csv_reader = csv::ReaderBuilder::new()
             .flexible(false)
             .trim(csv::Trim::All)
-            .from_reader(file_bytes.as_ref());
+            .from_reader(reader);
 
-        let headers = reader
+        let headers = csv_reader
             .headers()
             .map_err(|err| AppError::BadRequest(format!("Could not read CSV headers: {err}")))?
             .clone();
 
         let mut total_rows: u64 = 0;
         let mut reasons = ImportSkipReasons::default();
+        let mut batch: Vec<Profile> = Vec::with_capacity(IMPORT_BATCH_SIZE);
 
-        // Collect all records first so we can do batched inserts below.
-        // Memory is bounded: 500k rows × ~200 bytes ≈ 100 MB, which is the documented maximum.
-        let mut validated: Vec<Profile> = Vec::new();
-
-        for result in reader.records() {
+        for result in csv_reader.records() {
             total_rows += 1;
             match result {
                 Err(_) => {
@@ -524,28 +546,68 @@ pub async fn import_profiles(
                         continue;
                     }
                     if let Some(profile) = validate_csv_row(&record, &headers, &mut reasons) {
-                        validated.push(profile);
+                        batch.push(profile);
+                        if batch.len() >= IMPORT_BATCH_SIZE {
+                            let send_batch = std::mem::replace(
+                                &mut batch,
+                                Vec::with_capacity(IMPORT_BATCH_SIZE),
+                            );
+                            if tx_batches.blocking_send(send_batch).is_err() {
+                                break;
+                            }
+                        }
                     }
                 }
             }
         }
 
-        Ok::<_, AppError>((total_rows, validated, reasons))
-    })
-    .await
-    .map_err(|err| AppError::InternalServerError(format!("Import task failed: {err}")))??;
+        if !batch.is_empty() {
+            let _ = tx_batches.blocking_send(batch);
+        }
 
-    // Run batched inserts outside the blocking task so we can use async repo methods.
-    let mut final_reasons = reasons;
-    let mut inserted_count: u64 = 0;
+        Ok::<_, AppError>((total_rows, reasons))
+    });
 
-    for chunk in inserted.chunks(IMPORT_BATCH_SIZE) {
-        let result = state.profile_repo.bulk_insert(chunk.to_vec()).await?;
-        inserted_count += result.inserted;
-        final_reasons.duplicate_name += result.duplicate_name;
+    let repo_clone = state.profile_repo.clone();
+    let insert_task = tokio::spawn(async move {
+        let mut insert_tasks = futures::stream::FuturesUnordered::new();
+        while let Some(batch) = rx_batches.recv().await {
+            let repo = repo_clone.clone();
+            insert_tasks.push(tokio::spawn(async move { repo.bulk_insert(batch).await }));
+        }
+
+        let mut final_reasons = ImportSkipReasons::default();
+        let mut inserted_count: u64 = 0;
+
+        while let Some(task_res) = insert_tasks.next().await {
+            let result = task_res
+                .map_err(|e| AppError::InternalServerError(format!("Insert task panic: {e}")))??;
+            inserted_count += result.inserted;
+            final_reasons.duplicate_name += result.duplicate_name;
+        }
+
+        Ok::<_, AppError>((inserted_count, final_reasons))
+    });
+
+    while let Some(chunk) = field.chunk().await.unwrap_or(None) {
+        if tx_bytes.send(chunk).await.is_err() {
+            break;
+        }
     }
+    drop(tx_bytes); // Important! Close the channel so parse_task can finish.
 
-    // Imported data changes what list/search endpoints would return.
+    let (total_rows, parse_reasons) = parse_task
+        .await
+        .map_err(|err| AppError::InternalServerError(format!("Import task failed: {err}")))??;
+
+    let (inserted_count, mut final_reasons) = insert_task
+        .await
+        .map_err(|err| AppError::InternalServerError(format!("Insert collector panic: {err}")))??;
+
+    final_reasons.invalid_age += parse_reasons.invalid_age;
+    final_reasons.missing_fields += parse_reasons.missing_fields;
+    final_reasons.malformed += parse_reasons.malformed;
+
     if inserted_count > 0 {
         state.cache.clear();
     }
