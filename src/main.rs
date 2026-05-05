@@ -6,6 +6,7 @@ use std::{
 use dashmap::DashMap;
 use insighta_api::{
     AppState,
+    cache::QueryCache,
     client::ReqwestClient,
     config::AppConfig,
     create_app,
@@ -36,6 +37,8 @@ async fn main() -> Result<()> {
 
     let server_api = ServerApi::builder().version(ServerApiVersion::V1).build();
     client_options.server_api = Some(server_api);
+    client_options.max_pool_size = Some(50);
+    client_options.min_pool_size = Some(5);
 
     let mongo_client = mongodb::Client::with_options(client_options).map_err(|err| {
         AppError::ServiceUnavailable(format!("Failed to initialize MongoDB client: {err}"))
@@ -71,6 +74,7 @@ async fn main() -> Result<()> {
         oauth_states: Arc::new(DashMap::new()),
         auth_rate_limit: RateLimitStore::new(),
         api_rate_limit: RateLimitStore::new(),
+        cache: QueryCache::new(),
     };
 
     // Prune OAuth state entries that were never completed (e.g. user closed the browser).

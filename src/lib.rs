@@ -4,6 +4,7 @@ use tower_cookies::CookieManagerLayer;
 use crate::{config::AppConfig, middleware::rate_limit::RateLimitStore};
 
 pub mod auth;
+pub mod cache;
 pub mod client;
 pub mod config;
 pub mod countries;
@@ -11,6 +12,7 @@ pub mod errors;
 pub mod handlers;
 pub mod middleware;
 pub mod models;
+pub mod normalizer;
 pub mod parser;
 pub mod repo;
 pub mod seeder;
@@ -36,6 +38,8 @@ pub struct AppState {
     pub oauth_states: std::sync::Arc<OAuthStateMap>,
     pub auth_rate_limit: RateLimitStore,
     pub api_rate_limit: RateLimitStore,
+    /// In-process cache for serialized list and search responses.
+    pub cache: crate::cache::QueryCache,
 }
 
 pub fn create_app(state: AppState) -> axum::Router {
@@ -62,6 +66,7 @@ pub fn create_app(state: AppState) -> axum::Router {
     let auth_middleware_state = models::auth::AuthMiddlewareState {
         user_repo: state.user_repo.clone(),
         jwt_secret: state.config.jwt_secret.clone(),
+        cache: cache::AuthCache::new(),
     };
 
     let auth_router = axum::Router::new()
@@ -119,6 +124,10 @@ pub fn create_app(state: AppState) -> axum::Router {
         .route(
             "/api/profiles/export",
             axum::routing::get(handlers::profile::export_profiles_to_csv),
+        )
+        .route(
+            "/api/profiles/import",
+            axum::routing::post(handlers::profile::import_profiles),
         )
         .route(
             "/api/profiles/{id}",

@@ -3,22 +3,25 @@ use crate::{
     errors::{AppError, Result},
     middleware::role::{RequireAdmin, RequireAny},
     models::profile::{
-        CreateProfileRequest, Profile, ProfileDto, ProfileFilters, ProfileQuery, ProfileResponse,
-        SearchQuery,
+        CreateProfileRequest, ImportResult, ImportSkipReasons, Profile, ProfileDto, ProfileFilters,
+        ProfileQuery, ProfileResponse, SearchQuery,
     },
+    normalizer::build_cache_key,
     parser::parse_query,
     utils::{
-        build_list_response, fetch_age_data, fetch_country_data, fetch_gender_data, validate_name,
+        build_list_response, fetch_age_data, fetch_country_data, fetch_gender_data,
+        validate_csv_row, validate_name,
     },
 };
 use axum::{
     Json,
+    body::Body,
     extract::{
-        Path, Query, State,
+        Multipart, Path, Query, State,
         rejection::{JsonRejection, QueryRejection},
     },
     http::{StatusCode, header},
-    response::{AppendHeaders, IntoResponse},
+    response::{AppendHeaders, IntoResponse, Response},
 };
 use uuid::Uuid;
 
@@ -82,6 +85,9 @@ pub async fn create_profile(
         .profile_repo
         .insert_profile(new_profile.clone())
         .await?;
+
+    // A new profile means cached list/search results are stale.
+    state.cache.clear();
 
     Ok((
         StatusCode::CREATED,
@@ -166,6 +172,16 @@ pub async fn list_profiles(
     let sort_by = query.sort_by.unwrap_or_default();
     let order = query.order.unwrap_or_default();
 
+    let cache_key = build_cache_key("list", &filters, &sort_by, &order, page, limit);
+
+    if let Some(cached) = state.cache.get(&cache_key) {
+        return Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(cached))
+            .map_err(|err| AppError::InternalServerError(err.to_string()));
+    }
+
     let extra_params = {
         let mut params: Vec<(String, String)> = Vec::new();
         if let Some(ref gender) = filters.gender {
@@ -201,14 +217,19 @@ pub async fn list_profiles(
 
     let data: Vec<ProfileDto> = profiles.into_iter().map(Into::into).collect();
 
-    Ok(Json(build_list_response(
-        "/api/profiles",
-        page,
-        limit,
-        total,
-        &extra_params,
-        data,
-    )))
+    let response_body =
+        build_list_response("/api/profiles", page, limit, total, &extra_params, data);
+
+    let serialized = serde_json::to_vec(&response_body)
+        .map_err(|err| AppError::InternalServerError(err.to_string()))?;
+
+    state.cache.set(cache_key, serialized.clone());
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serialized))
+        .map_err(|err| AppError::InternalServerError(err.to_string()))
 }
 
 /// Deletes an existing profile by its UUID.
@@ -237,6 +258,8 @@ pub async fn delete_profile(
     if !deleted {
         return Err(AppError::NotFound("Profile not found".into()));
     }
+
+    state.cache.clear();
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -287,6 +310,16 @@ pub async fn search_profiles(
         .order
         .unwrap_or(parsed_search_query.order.unwrap_or_default());
 
+    let cache_key = build_cache_key("search", &filters, &sort_by, &order, page, limit);
+
+    if let Some(cached) = state.cache.get(&cache_key) {
+        return Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(cached))
+            .map_err(|err| AppError::InternalServerError(err.to_string()));
+    }
+
     let extra_params = vec![
         ("q".into(), search_string.clone()),
         ("sort_by".into(), sort_by.as_str().into()),
@@ -300,14 +333,25 @@ pub async fn search_profiles(
 
     let data: Vec<ProfileDto> = profiles.into_iter().map(Into::into).collect();
 
-    Ok(Json(build_list_response(
+    let response_body = build_list_response(
         "/api/profiles/search",
         page,
         limit,
         total,
         &extra_params,
         data,
-    )))
+    );
+
+    let serialized = serde_json::to_vec(&response_body)
+        .map_err(|err| AppError::InternalServerError(err.to_string()))?;
+
+    state.cache.set(cache_key, serialized.clone());
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(serialized))
+        .map_err(|err| AppError::InternalServerError(err.to_string()))
 }
 
 /// Exports profiles as a downloadable CSV file, with optional filtering and sorting.
@@ -421,4 +465,98 @@ pub async fn export_profiles_to_csv(
     ]);
 
     Ok((headers, csv_bytes))
+}
+
+const IMPORT_BATCH_SIZE: usize = 1_000;
+
+pub async fn import_profiles(
+    State(state): State<AppState>,
+    _auth: RequireAdmin,
+    mut multipart: Multipart,
+) -> Result<impl IntoResponse> {
+    // Pull the file field from the multipart stream.
+    let file_bytes = loop {
+        let field = multipart
+            .next_field()
+            .await
+            .map_err(|err| AppError::BadRequest(format!("Multipart read error: {err}")))?
+            .ok_or_else(|| AppError::BadRequest("No file field found in request".into()))?;
+
+        let name = field.name().unwrap_or("").to_string();
+        if name == "file" {
+            let bytes = field
+                .bytes()
+                .await
+                .map_err(|err| AppError::BadRequest(format!("Failed to read file field: {err}")))?;
+            break bytes;
+        }
+        // Skip non-file fields and keep looking.
+    };
+
+    // Parse and validate all rows in a blocking thread to avoid stalling the executor.
+    let (total_rows, inserted, reasons) = tokio::task::spawn_blocking(move || {
+        let mut reader = csv::ReaderBuilder::new()
+            .flexible(false)
+            .trim(csv::Trim::All)
+            .from_reader(file_bytes.as_ref());
+
+        let headers = reader
+            .headers()
+            .map_err(|err| AppError::BadRequest(format!("Could not read CSV headers: {err}")))?
+            .clone();
+
+        let mut total_rows: u64 = 0;
+        let mut reasons = ImportSkipReasons::default();
+
+        // Collect all records first so we can do batched inserts below.
+        // Memory is bounded: 500k rows × ~200 bytes ≈ 100 MB, which is the documented maximum.
+        let mut validated: Vec<Profile> = Vec::new();
+
+        for result in reader.records() {
+            total_rows += 1;
+            match result {
+                Err(_) => {
+                    reasons.malformed += 1;
+                }
+                Ok(record) => {
+                    if record.len() != headers.len() {
+                        reasons.malformed += 1;
+                        continue;
+                    }
+                    if let Some(profile) = validate_csv_row(&record, &headers, &mut reasons) {
+                        validated.push(profile);
+                    }
+                }
+            }
+        }
+
+        Ok::<_, AppError>((total_rows, validated, reasons))
+    })
+    .await
+    .map_err(|err| AppError::InternalServerError(format!("Import task failed: {err}")))??;
+
+    // Run batched inserts outside the blocking task so we can use async repo methods.
+    let mut final_reasons = reasons;
+    let mut inserted_count: u64 = 0;
+
+    for chunk in inserted.chunks(IMPORT_BATCH_SIZE) {
+        let result = state.profile_repo.bulk_insert(chunk.to_vec()).await?;
+        inserted_count += result.inserted;
+        final_reasons.duplicate_name += result.duplicate_name;
+    }
+
+    // Imported data changes what list/search endpoints would return.
+    if inserted_count > 0 {
+        state.cache.clear();
+    }
+
+    let skipped = total_rows.saturating_sub(inserted_count);
+
+    Ok(Json(ImportResult {
+        status: "success".into(),
+        total_rows,
+        inserted: inserted_count,
+        skipped,
+        reasons: final_reasons,
+    }))
 }

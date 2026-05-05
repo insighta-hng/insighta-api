@@ -1,4 +1,4 @@
-use crate::countries::COUNTRIES_LOWER;
+use crate::countries::{COUNTRIES_LOWER, DEMONYMS};
 use crate::errors::{AppError, Result};
 use crate::models::{
     gender::Gender,
@@ -38,12 +38,23 @@ pub fn parse_query(search_query: &str) -> Result<(ProfileFilters, SearchQuery)> 
         filters.country_id = Some(code.to_string());
         is_parsed_country = true;
         is_value_parsed = true;
+    } else if let Some(&code) = DEMONYMS.get(trimmed_query.as_str()) {
+        filters.country_id = Some(code.to_string());
+        is_parsed_country = true;
+        is_value_parsed = true;
     }
 
     let tokens: Vec<&str> = trimmed_query.split_whitespace().collect();
 
     for idx in 0..tokens.len() {
         let token = tokens[idx];
+
+        if let Some(&code) = DEMONYMS.get(token).filter(|_| !is_parsed_country) {
+            filters.country_id = Some(code.to_string());
+            is_parsed_country = true;
+            is_value_parsed = true;
+            continue;
+        }
 
         match token {
             "in" | "from" if idx + 1 < tokens.len() && !is_parsed_country => {
