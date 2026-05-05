@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::{
     errors::{AppError, Result},
-    models::profile::{Profile, ProfileFilters, SortBy, SortOrder},
+    models::profile::{BatchInsertResult, Profile, ProfileFilters, SortBy, SortOrder},
 };
 
 #[derive(Clone)]
@@ -230,14 +230,17 @@ impl ProfileRepo {
         }
     }
 
-    pub async fn insert_many_profiles(&self, profiles: Vec<Profile>) -> Result<u64> {
+    pub async fn bulk_insert(&self, profiles: Vec<Profile>) -> Result<BatchInsertResult> {
         if profiles.is_empty() {
-            return Ok(0);
+            return Ok(BatchInsertResult {
+                inserted: 0,
+                duplicate_name: 0,
+            });
         }
 
         let total = profiles.len() as u64;
         let options = mongodb::options::InsertManyOptions::builder()
-            .ordered(false) // With ordered=false, duplicate key errors are partial failures.
+            .ordered(false)
             .build();
 
         match self
@@ -246,22 +249,27 @@ impl ProfileRepo {
             .with_options(options)
             .await
         {
-            Ok(result) => Ok(result.inserted_ids.len() as u64),
+            Ok(result) => Ok(BatchInsertResult {
+                inserted: result.inserted_ids.len() as u64,
+                duplicate_name: 0,
+            }),
             Err(e) => {
-                if let ErrorKind::InsertMany(ref insert_many_err) = *e.kind
-                    && let Some(ref write_errors) = insert_many_err.write_errors
+                if let ErrorKind::InsertMany(ref bulk_err) = *e.kind
+                    && let Some(ref write_errors) = bulk_err.write_errors
                 {
-                    let all_dup_key = write_errors.iter().all(|err| err.code == 11000);
-                    if all_dup_key {
-                        let inserted = total - write_errors.len() as u64;
-                        return Ok(inserted);
-                    } else {
-                        let non_dup_count =
-                            write_errors.iter().filter(|err| err.code != 11000).count();
-                        return Err(AppError::ServiceUnavailable(format!(
-                            "DB Bulk Insert partially failed: {non_dup_count} non-duplicate errors occurred"
-                        )));
+                    let dup_count = write_errors.iter().filter(|e| e.code == 11000).count() as u64;
+                    let other_count = write_errors.len() as u64 - dup_count;
+
+                    if other_count == 0 {
+                        return Ok(BatchInsertResult {
+                            inserted: total - dup_count,
+                            duplicate_name: dup_count,
+                        });
                     }
+
+                    return Err(AppError::ServiceUnavailable(format!(
+                        "DB batch insert failed: {other_count} non-duplicate write errors"
+                    )));
                 }
                 Err(AppError::ServiceUnavailable(format!(
                     "DB Bulk Insert Error: {e}"

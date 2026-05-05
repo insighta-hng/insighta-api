@@ -167,3 +167,25 @@ pub struct SearchQuery {
     pub page: Option<u32>,
     pub limit: Option<u32>,
 }
+
+#[derive(Debug, Serialize, Default)]
+pub struct ImportSkipReasons {
+    pub duplicate_name: u64,
+    pub invalid_age: u64,
+    pub missing_fields: u64,
+    pub malformed: u64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ImportResult {
+    pub status: String,
+    pub total_rows: u64,
+    pub inserted: u64,
+    pub skipped: u64,
+    pub reasons: ImportSkipReasons,
+}
+
+pub struct BatchInsertResult {
+    pub inserted: u64,
+    pub duplicate_name: u64,
+}

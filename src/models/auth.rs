@@ -1,3 +1,4 @@
+use crate::cache::AuthCache;
 use chrono::{DateTime, Utc};
 use mongodb::bson;
 use serde::{Deserialize, Serialize};
@@ -79,6 +80,7 @@ pub struct AuthenticatedUser {
 pub struct AuthMiddlewareState {
     pub user_repo: UserRepo,
     pub jwt_secret: String,
+    pub cache: AuthCache,
 }
 
 #[derive(Debug, Serialize)]

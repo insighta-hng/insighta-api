@@ -50,12 +50,12 @@ pub async fn run(repo: ProfileRepo) {
         })
         .collect();
 
-    match repo.insert_many_profiles(profiles).await {
-        Ok(inserted) => {
-            let skipped = total as u64 - inserted;
+    match repo.bulk_insert(profiles).await {
+        Ok(result) => {
+            let skipped = total as u64 - result.inserted;
             tracing::info!(
                 total = total,
-                inserted = inserted,
+                inserted = result.inserted,
                 skipped = skipped,
                 "Database seeding complete"
             );

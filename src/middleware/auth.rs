@@ -61,14 +61,24 @@ pub async fn require_auth(
         }
     };
 
-    let user = match auth_state.user_repo.find_by_id(user_id).await {
-        Ok(Some(user)) => user,
-        Ok(None) => {
-            return AppError::Unauthorized("User no longer exists".to_string()).into_response();
-        }
-        Err(_) => {
-            return AppError::InternalServerError("Authentication check failed".to_string())
-                .into_response();
+    let user = match auth_state.cache.get(&user_id) {
+        Some(cached_user) => cached_user,
+        None => {
+            let user = match auth_state.user_repo.find_by_id(user_id).await {
+                Ok(Some(user)) => user,
+                Ok(None) => {
+                    return AppError::Unauthorized("User no longer exists".to_string())
+                        .into_response();
+                }
+                Err(_) => {
+                    return AppError::InternalServerError(
+                        "Authentication check failed".to_string(),
+                    )
+                    .into_response();
+                }
+            };
+            auth_state.cache.set(user_id, user.clone());
+            user
         }
     };
 
